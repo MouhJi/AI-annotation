@@ -1,0 +1,12 @@
+import {useState} from "react";
+import {Link} from "react-router-dom";
+import {errorMessage} from "../services/api";
+import {useWorkspace} from "../workspaces/WorkspaceProvider";
+import {useInvitations} from "./InvitationProvider";
+import InvitationVerificationNotice from "./InvitationVerificationNotice";
+
+export default function NotificationBell(){
+ const {invitations,loading,error,verificationRequired,accept,decline}=useInvitations();const {select}=useWorkspace();const [open,setOpen]=useState(false);const [busy,setBusy]=useState("");const [message,setMessage]=useState("");
+ const act=async(id:string,kind:"accept"|"decline")=>{setBusy(id);setMessage("");try{if(kind==="accept"){const result=await accept(id);select(result.workspace_id);setMessage("Invitation accepted. Workspace is ready.");setOpen(false)}else{await decline(id);setMessage("Invitation declined.")}}catch(e){setMessage(errorMessage(e))}finally{setBusy("")}};
+ return <details className="notification-bell" open={open} onToggle={event=>setOpen((event.target as HTMLDetailsElement).open)}><summary aria-label={verificationRequired?"Notifications: email verification required":`Notifications${invitations.length ? `: ${invitations.length} pending invitations` : ""}`} title="Workspace invitations">🔔{verificationRequired?<span className="notification-count">!</span>:invitations.length>0&&<span className="notification-count">{invitations.length>99?"99+":invitations.length}</span>}</summary><section className="notification-popover" aria-label="Workspace invitations"><header><b>Invitations</b><Link to="/invitations" onClick={()=>setOpen(false)}>View all invitations</Link></header>{verificationRequired?<InvitationVerificationNotice/>:loading?<p className="muted">Loading invitations…</p>:error?<p role="alert" className="error">{error}</p>:!invitations.length?<p className="muted">No pending invitations.</p>:<div className="notification-list">{invitations.slice(0,5).map(invitation=><article key={invitation.invitation_id}><b>{invitation.workspace_name}</b><span>{invitation.invited_role} · invited by {invitation.invited_by_name}</span><div><button disabled={!!busy} onClick={()=>void act(invitation.invitation_id,"accept")}>{busy===invitation.invitation_id?"Working…":"Accept"}</button><button className="secondary" disabled={!!busy} onClick={()=>void act(invitation.invitation_id,"decline")}>Decline</button></div></article>)}</div>}{message&&<p role="status" className={message.includes("declined")||message.includes("accepted")?"success":"error"}>{message}</p>}</section></details>;
+}

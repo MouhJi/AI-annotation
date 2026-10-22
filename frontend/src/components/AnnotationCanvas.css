@@ -1,0 +1,1 @@
+.annotation-surface{position:relative;max-width:100%;line-height:0}.annotation-surface>img{display:block;width:100%;height:100%;object-fit:contain;user-select:none}.annotation-surface>svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}.annotation-surface svg g{cursor:pointer}.canvas-loader{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}

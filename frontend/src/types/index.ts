@@ -1,0 +1,11 @@
+export type Project={id:number;name:string;description?:string;annotation_mode:"object_detection"|"instance_segmentation";image_count:number;class_count:number;workspace_id:string;permissions:string[]};
+export type LabelClass={id:number;project_id:number;name:string};
+export type ImageItem={id:number;filename:string;width:number;height:number;annotation_count:number;image_url?:string;split?:"train"|"val"|"test"};
+export type ImageDetail=ImageItem & {project_id:number;image_url:string};
+export type Point=[number,number];
+export type Annotator={id:string;full_name:string};
+export type Annotation={id:number;image_id:number;class_id:number;class_name:string;annotation_type:"bbox"|"polygon";x:number;y:number;width:number;height:number;points?:Point[]|null;created_by?:Annotator|null;updated_by?:Annotator|null;created_at?:string;updated_at?:string;source?:string;version?:number};
+export type DraftAnnotation=Omit<Annotation,"id"|"image_id"|"class_name"> & {id:number;class_name:string;isNew?:boolean};
+export type SplitSummary={train:number;val:number;test:number;total:number;configured:boolean};
+export type Prediction={id:number;image_id:number;model_class_id:number;model_class_name:string;mapped_class_id:number|null;mapped_class_name:string|null;prediction_type:"bbox"|"polygon";x:number;y:number;width:number;height:number;points?:Point[]|null;confidence:number;status:"PENDING"|"ACCEPTED"|"REJECTED"};
+export type ClassMapping={id:number;model_class_id:number;model_class_name:string;class_id:number;class_name:string};

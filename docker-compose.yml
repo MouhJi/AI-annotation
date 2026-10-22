@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: annotation
+      POSTGRES_USER: annotation
+      POSTGRES_PASSWORD: annotation
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U annotation -d annotation"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://annotation:annotation@postgres:5432/annotation
+      STORAGE_PATH: /app/storage
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      APP_ENV: ${APP_ENV:-development}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-}
+      JWT_ISSUER: ${JWT_ISSUER:-annotation-platform}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-annotation-web}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-file}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
+      SMTP_TIMEOUT_SECONDS: ${SMTP_TIMEOUT_SECONDS:-10}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-Data Annotation Platform}
+      YOLO_MODEL_PATH: ${YOLO_MODEL_PATH:-/app/storage/models/yolo11n.pt}
+      YOLO_DEVICE: ${YOLO_DEVICE:-cpu}
+      YOLO_CONFIDENCE_THRESHOLD: ${YOLO_CONFIDENCE_THRESHOLD:-0.25}
+      YOLO_IOU_THRESHOLD: ${YOLO_IOU_THRESHOLD:-0.45}
+      YOLO_SEG_MODEL_PATH: ${YOLO_SEG_MODEL_PATH:-/app/storage/models/yolo11n-seg.pt}
+      YOLO_SEG_DEVICE: ${YOLO_SEG_DEVICE:-cpu}
+      YOLO_SEG_CONFIDENCE_THRESHOLD: ${YOLO_SEG_CONFIDENCE_THRESHOLD:-0.25}
+      YOLO_SEG_IOU_THRESHOLD: ${YOLO_SEG_IOU_THRESHOLD:-0.45}
+    ports: ["8000:8000"]
+    volumes: [./storage:/app/storage]
+    depends_on: {postgres: {condition: service_healthy}}
+  frontend:
+    build: ./frontend
+    environment: {VITE_API_URL: http://localhost:8000/api}
+    ports: ["5173:5173"]
+    depends_on: [backend]
+volumes: {postgres_data: {}}

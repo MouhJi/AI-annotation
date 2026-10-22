@@ -1,0 +1,16 @@
+// @vitest-environment jsdom
+import {afterEach,describe,it,expect,vi} from "vitest";
+import {AxiosError,AxiosHeaders,type AxiosResponse,type InternalAxiosRequestConfig} from "axios";
+import {api,authApi,refreshSession,setAuth,subscribeAuth,signOut} from "./api";
+const user={id:"uuid",email:"user@example.com",full_name:"User",status:"active",email_verified:true,created_at:"2026-01-01"};
+const response=(config:InternalAxiosRequestConfig,data:unknown):AxiosResponse=>({config,data,status:200,statusText:"OK",headers:{}});
+const originalApi=api.defaults.adapter,originalAuth=authApi.defaults.adapter;
+afterEach(()=>{api.defaults.adapter=originalApi;authApi.defaults.adapter=originalAuth;setAuth(null);vi.restoreAllMocks()});
+describe("memory authentication client",()=>{
+ it("restores a session without storing tokens in localStorage",async()=>{const spy=vi.spyOn(Storage.prototype,"setItem");authApi.defaults.adapter=async config=>response(config,{access_token:"new",user});const listener=vi.fn();const unsubscribe=subscribeAuth(listener);await refreshSession();expect(listener).toHaveBeenLastCalledWith(user);expect(spy).not.toHaveBeenCalled();unsubscribe()});
+ it("shares a single refresh among concurrent requests",async()=>{setAuth({access_token:"expired",user});let refreshes=0;authApi.defaults.adapter=async config=>{refreshes++;await new Promise(resolve=>setTimeout(resolve,20));return response(config,{access_token:"fresh",user})};api.defaults.adapter=async config=>{if(config.headers.Authorization==="Bearer fresh")return response(config,{ok:true});throw new AxiosError("Expired","401",config,undefined,{...response(config,{}),status:401})};const results=await Promise.all([api.get("/projects"),api.get("/users/me"),api.get("/auth/sessions")]);expect(refreshes).toBe(1);expect(results.every(result=>result.data.ok)).toBe(true)});
+ it("never loops when a retried request remains unauthorized",async()=>{let refreshes=0,requests=0;authApi.defaults.adapter=async config=>{refreshes++;return response(config,{access_token:"bad",user})};api.defaults.adapter=async config=>{requests++;throw new AxiosError("Unauthorized","401",config,undefined,{...response(config,{}),status:401})};await expect(api.get("/projects")).rejects.toThrow();expect(refreshes).toBe(1);expect(requests).toBe(2)});
+ it("clears authentication if cookie restoration fails",async()=>{setAuth({access_token:"old",user});const listener=vi.fn();const stop=subscribeAuth(listener);authApi.defaults.adapter=async config=>{throw new AxiosError("Expired","401",config)};await expect(refreshSession()).rejects.toThrow();expect(listener).toHaveBeenLastCalledWith(null);stop()});
+ it("revokes session and clears memory on logout",async()=>{setAuth({access_token:"token",user});const listener=vi.fn();const stop=subscribeAuth(listener);api.defaults.adapter=async config=>response(config,{});await signOut();expect(listener).toHaveBeenLastCalledWith(null);stop()});
+ it("does not refresh forbidden responses",async()=>{const refresh=vi.fn();authApi.defaults.adapter=refresh;api.defaults.adapter=async config=>{throw new AxiosError("Forbidden","403",config,undefined,{...response(config,{}),status:403})};await expect(api.get("/projects")).rejects.toThrow();expect(refresh).not.toHaveBeenCalled()});
+});

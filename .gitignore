@@ -1,0 +1,15 @@
+backend/.env
+frontend/.env
+backend/annotation.db
+storage/projects/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+.pytest_cache/
+*.pt
+models/
+.env
+storage/.auth-secret
+storage/.emails/
+storage/.backups/
+*.db

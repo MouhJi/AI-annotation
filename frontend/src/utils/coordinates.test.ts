@@ -1,0 +1,2 @@
+import {describe,expect,it} from "vitest";import {canvasToImageCoordinates,imageToCanvasCoordinates,clampBox} from "./coordinates";
+describe("coordinate conversions",()=>{it("round trips scaled coordinates",()=>{expect(canvasToImageCoordinates({x:100,y:50},.5)).toEqual({x:200,y:100});expect(imageToCanvasCoordinates({x:200,y:100},.5)).toEqual({x:100,y:50})});it("keeps a box inside image",()=>expect(clampBox({x:90,y:80,width:30,height:30},100,100)).toMatchObject({width:10,height:20}))});

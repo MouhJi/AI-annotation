@@ -1,0 +1,38 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {useWorkspace} from "../workspaces/WorkspaceProvider";
+import AnnotationCanvas from "../components/AnnotationCanvas";
+import AnnotationAttribution, {annotationLabel} from "../components/AnnotationAttribution";
+import AutoLabelPanel from "../components/AutoLabelPanel";
+import { useAnnotations } from "../hooks/useAnnotations";
+import { api, imageUrl } from "../services/api";
+import type { Annotation, ImageDetail, ImageItem, LabelClass, Prediction, Project } from "../types";
+
+export default function EditorPage() {
+  const {current}=useWorkspace();
+  const { projectId, imageId } = useParams(); const navigate = useNavigate();
+  const [project, setProject] = useState<Project>(); const [image, setImage] = useState<ImageDetail>(); const [classes, setClasses] = useState<LabelClass[]>([]); const [allImages, setAllImages] = useState<ImageItem[]>([]); const [initial, setInitial] = useState<Annotation[]>([]); const [predictions, setPredictions] = useState<Prediction[]>([]);
+  const [classId, setClassId] = useState<number>(); const [selected, setSelected] = useState<number>(); const [selectedPrediction, setSelectedPrediction] = useState<number>(); const [mode, setMode] = useState<"select" | "draw" | "polygon">("select");
+  const [loadError, setLoadError] = useState(""); const [actionError, setActionError] = useState("");
+  const annotations = useAnnotations(Number(imageId), initial);
+  const load = () => Promise.all([api.get(`/projects/${projectId}`), api.get(`/images/${imageId}`), api.get(`/images/${imageId}/annotations`), api.get(`/projects/${projectId}/classes`), api.get(`/projects/${projectId}/images`)]).then(([projectResponse, imageResponse, annotationsResponse, classesResponse, imagesResponse]) => {
+    if(projectResponse.data.workspace_id!==current?.id||imageResponse.data.project_id!==Number(projectId)){setProject(undefined);setImage(undefined);setLoadError("Access denied: image does not belong to the current workspace/project.");return;}
+    setProject(projectResponse.data); setImage(imageResponse.data); setInitial(Array.isArray(annotationsResponse.data) ? annotationsResponse.data : []); setClasses(Array.isArray(classesResponse.data) ? classesResponse.data : []); setAllImages(Array.isArray(imagesResponse.data) ? imagesResponse.data : []); setLoadError("");
+  }).catch((error) => { setProject(undefined);setImage(undefined);const detail = error.response?.data?.detail; setLoadError(typeof detail === "string" ? detail : "Unable to load the image editor. Check that the API is running, then retry."); });
+  useEffect(() => { void load(); }, [imageId, projectId]);
+  useEffect(() => { setSelected(undefined); setSelectedPrediction(undefined); setMode("select"); setActionError(""); }, [imageId]);
+  useEffect(() => { const onKeyDown = (event: KeyboardEvent) => { if (project?.permissions.includes("annotation.delete") && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) && (event.key === "Delete" || event.key === "Backspace") && selected && mode === "select") { annotations.remove(selected); setSelected(undefined); } }; window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [selected, annotations, mode, project]);
+  if (loadError) return <main className="editor-error"><section><p className="eyebrow">ANNOTATION EDITOR</p><h1>Unable to open this image</h1><p>{loadError}</p><button onClick={() => navigate(`/projects/${projectId}`)}>← Back to project</button></section></main>;
+  if (!image || !project) return <main className="editor-loading">Loading image editor…</main>;
+  const can=(permission:string)=>project.permissions.includes(permission); const readOnly=!can("annotation.update");
+  const segmentation = project.annotation_mode === "instance_segmentation"; const index = allImages.findIndex((item) => item.id === image.id);
+  const go = (nextIndex: number) => { if (annotations.dirty && !window.confirm("You have unsaved changes. Discard changes?")) return; const next = allImages[nextIndex]; if (next) navigate(`/projects/${projectId}/images/${next.id}`); };
+  const deleteAll = async () => {
+    if(!can("annotation.delete"))return;
+    if (!window.confirm("Delete all labels?\n\nThis permanently deletes saved annotations for this image.")) return;
+    try { setActionError(""); const result = await api.delete(`/images/${image.id}/annotations`); annotations.replace([]); setInitial([]); setSelected(undefined); await load(); alert(`Deleted ${result.data.deleted_count} saved labels.`); }
+    catch (error: any) { setActionError(error.response?.data?.detail ?? "Unable to delete labels"); }
+  };
+  const save = async () => { if(!can("annotation.update"))return; try { setActionError(""); await annotations.save(); alert("Saved successfully"); } catch (error: any) { setActionError(error.response?.data?.detail ?? "Save failed"); } };
+  return <main className="editor"><header><button onClick={() => navigate(`/projects/${projectId}`)}>← Back</button><h2>{image.filename}</h2>{!readOnly?<button disabled={annotations.saving} onClick={() => void save()}>{annotations.saving ? "Saving…" : "Save"}</button>:<span className="badge">Read-only · Viewer</span>}</header>{actionError && <p className="error">{actionError}</p>}<div className="workspace"><aside><h3>Classes</h3>{classes.map((item) => <button className={classId === item.id ? "active" : ""} onClick={() => setClassId(item.id)} key={item.id}>● {item.name}</button>)}{can("prediction.run")&&<AutoLabelPanel key={image.id} projectId={projectId!} imageId={image.id} classes={classes} annotationMode={project.annotation_mode} selectedId={selectedPrediction} onSelect={(id) => { setSelectedPrediction(id); setSelected(undefined); }} onPredictions={setPredictions} onAccepted={() => void load()}/>}</aside><AnnotationCanvas key={image.id} readOnly={readOnly} src={imageUrl(image.image_url)} imageWidth={image.width} imageHeight={image.height} annotations={annotations.items} predictions={predictions} classes={classes} selected={selected} selectedPrediction={selectedPrediction} classId={classId} mode={mode} onSelect={(id) => { setSelected(id); setSelectedPrediction(undefined); }} onSelectPrediction={(id) => { setSelectedPrediction(id); setSelected(undefined); }} onAdd={(annotation) => { annotations.add(annotation); setMode("select"); }} onChange={annotations.update}/><aside><h3>Objects</h3>{annotations.items.map((annotation) => <button className={selected === annotation.id ? "active" : ""} onClick={() => setSelected(annotation.id)} key={annotation.id}>{annotationLabel(annotation)}</button>)}{annotations.items.find(item=>item.id===selected) && <AnnotationAttribution annotation={annotations.items.find(item=>item.id===selected)!}/>}</aside></div><footer>{!readOnly&&<><button className={mode === "select" ? "active" : ""} onClick={() => setMode("select")}>Select</button>{segmentation ? <button className={mode === "polygon" ? "active" : ""} onClick={() => setMode("polygon")}>Polygon</button> : <button className={mode === "draw" ? "active" : ""} onClick={() => setMode("draw")}>Bounding Box</button>}<button disabled={!selected} onClick={() => { if (selected) { annotations.remove(selected); setSelected(undefined); } }}>Delete</button><button className="danger" onClick={() => void deleteAll()}>Delete All Labels</button></>}<span/><button disabled={index <= 0} onClick={() => go(index - 1)}>‹ Previous</button><button disabled={index === allImages.length - 1} onClick={() => go(index + 1)}>Next ›</button></footer></main>;
+}
