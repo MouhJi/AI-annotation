@@ -1,146 +1,363 @@
-# Data Annotation Platform MVP
+# AnnotateAI — Data Annotation Platform
 
-## Phase 6.4 — public landing page
+AnnotateAI is a full-stack platform for preparing computer-vision datasets. Teams can organize images, draw bounding boxes or polygons, review YOLO suggestions, collaborate in workspaces, and export YOLO-ready datasets.
 
-Visit `http://localhost:5173/` for the public product page and interactive sample
-annotation preview. Get Started opens registration for guests or `/projects` for
-signed-in users. Existing protected application routes remain unchanged. See
-[PHASE6_4_LANDING.md](PHASE6_4_LANDING.md) for components, validation and limitations.
+![AnnotateAI landing page](docs/phase64-desktop.jpg)
 
-## Phase 6.3 — annotation attribution
+## Features
 
-Saved boxes/polygons show `Class · Creator`. Select an object to see its creator,
-last editor, timestamps and manual/AI-assisted source. Accepting AI results credits
-the accepting member. Legacy objects show Unknown annotator. Image Save is atomic
-and rejects concurrent changes with a reload message. See
-[PHASE6_3_ATTRIBUTION.md](PHASE6_3_ATTRIBUTION.md) for API, migration, tests and limits.
+- **Image annotation** — bounding boxes for object detection and polygons for instance segmentation.
+- **AI-assisted labeling** — YOLO detection and segmentation suggestions; review, refine, accept, or reject each proposal.
+- **Team workspaces** — verified-email invitations and Owner, Admin, Annotator, Reviewer, and Viewer roles.
+- **Annotation attribution** — show the creator, latest editor, timestamps, source, and stable ID for every saved object.
+- **Dataset workflow** — image/class management, persistent train/validation/test split, and YOLO export.
+- **Authentication** — JWT access tokens, rotating refresh cookies, email verification, password reset, SMTP delivery support.
+- **Responsive landing page** — public route at /; the application remains protected at /projects.
 
-## Phase 6.2 — real email delivery
+## Technology
 
-Gmail/SMTP delivery, HTML + plain-text templates, delivery receipts, a Check Your
-Email page and verification confirmation are implemented. Configure `EMAIL_PROVIDER=smtp`
-and private SMTP credentials in your local `.env` to enable real delivery. File mode
-is for offline development/tests and cannot deliver to Gmail. See
-[PHASE6_2_EMAIL.md](PHASE6_2_EMAIL.md) for secure Gmail App Password setup, diagnostics,
-real-inbox testing, endpoints, migration and operational limitations.
+| Layer | Technology |
+| --- | --- |
+| Frontend | React, Vite, TypeScript, React Router |
+| Backend | FastAPI, SQLAlchemy, Alembic |
+| Database | PostgreSQL 16 |
+| Canvas | SVG + React |
+| AI | Ultralytics YOLO |
+| Deployment | Docker Compose |
+| Tests | Pytest, Vitest, Testing Library |
 
-## Phase 6 — workspaces and team roles
+## Quick start
 
-Workspaces, switching, members, verified-email invitations, centralized five-role RBAC, read-only Viewer editor, confirmed workspace deletion and audit logging are implemented. See [PHASE6_WORKSPACES.md](PHASE6_WORKSPACES.md) for the architecture/schema, permission matrix, all endpoints, migration/backup/recovery instructions, test results and known limitations.
+### Requirements
 
-Select a workspace in the sidebar. Owners/Admins use **Workspace settings** to manage the team; only Owners can delete a workspace. Annotators/Reviewers can annotate and use AI but cannot administer datasets/export; Viewers are read-only. Each project inherits workspace membership, **not** its historical owner_user_id. Existing owner-to-workspace migration is an explicit dry-run/operator command, never automatic at startup. The confirmed local migration preserved all 3 projects, 55 images and 4 annotations.
+- Docker Desktop with the Linux container engine running
+- Docker Compose v2
 
-Invitations require the matching **verified** email. Existing users receive them in the in-app notification bell and **Invitations** page, where they can accept or decline without handling a token. Email links remain supported for onboarding and are saved privately under `storage/.emails` in development; configure SMTP and HTTPS for production. Owners/Admins can resend or revoke a pending invitation. Save changes before switching workspaces, since switching clears project/editor selections and drafts.
+### 1. Clone and configure
 
-## Phase 5 — accounts and private projects
-
-Authentication, profile/security settings, refresh sessions, email verification and password reset are now implemented. See [PHASE5_AUTH.md](PHASE5_AUTH.md) for migration, API, security configuration and tests.
-
-On upgrade the backend runs inspected Alembic migrations automatically. Register/sign in at `http://localhost:5173`. Existing project/image/annotation data is preserved, but legacy projects stay locked until an operator confirms their owner using the documented dry-run/claim command. No project is assigned automatically to the first registered user. Keep your PostgreSQL volume; never run `docker compose down -v` to upgrade.
-
-For local Python startup, run `alembic upgrade head` before Uvicorn. Development reset/verification emails are private `.eml` files under `storage/.emails`; production needs configured SMTP and HTTPS. The following earlier feature guide still applies after authentication and ownership claim.
-
-An image-labeling application built with React/Vite and an SVG annotation canvas, plus FastAPI/SQLAlchemy/PostgreSQL. Images are stored in the local `storage/` directory; only metadata and original-image pixel coordinates are persisted in the database.
-
-## Run with Docker
-
-```bash
+~~~bash
+git clone https://github.com/<your-github-username>/annotation-platform.git
 cd annotation-platform
+~~~
+
+Create a private local environment file.
+
+**PowerShell**
+
+~~~powershell
+Copy-Item .env.example .env
+~~~
+
+**macOS/Linux**
+
+~~~bash
+cp .env.example .env
+~~~
+
+### 2. Start the stack
+
+~~~bash
 docker compose up --build
-```
+~~~
 
-Open `http://localhost:5173`; API docs are at `http://localhost:8000/docs`. To seed the default Traffic Detection project, run `docker compose exec backend python seed.py`.
+Open:
 
-## Run locally
+| Service | URL |
+| --- | --- |
+| Landing page and web app | http://localhost:5173 |
+| API documentation | http://localhost:8000/docs |
+| Health check | http://localhost:8000/health |
 
-Install Python 3.11+ and Node 20+. In `backend`, create an environment, install `requirements.txt`, set `DATABASE_URL` (SQLite is supported for single-process tests), run `alembic upgrade head`, then `uvicorn app.main:app --reload --port 8000`. Collaboration deployment uses PostgreSQL. In `frontend`, run `npm ci`, copy `.env.example` to `.env`, then `npm run dev`.
+The backend applies Alembic migrations automatically. Uploaded images and model files live under storage/; PostgreSQL data stays in the postgres_data Docker volume.
 
-## Main API
+Run in the background:
 
-| Area | Endpoints |
-|---|---|
-| Projects | `POST/GET /api/projects`, `GET /api/projects/{id}` |
-| Classes | `POST/GET /api/projects/{id}/classes`, `DELETE /api/classes/{id}` |
-| Images | `POST/GET /api/projects/{id}/images`, `GET /api/images/{id}` |
-| Annotations | `GET/POST /api/images/{id}/annotations`, `PUT/DELETE /api/annotations/{id}` |
-| Dataset | `GET/PUT /api/projects/{id}/dataset/split`, `POST /api/projects/{id}/dataset/export/yolo` |
+~~~bash
+docker compose up -d --build
+~~~
 
-## Export a YOLO dataset
+See backend logs:
 
-On a project's detail page, set **Train**, **Validation**, and **Test** percentages (the default is 80/10/10), then click **Save split**. The assignments are stored per image and remain stable across exports. Small datasets prioritize at least one training image; validation or test may be empty when there are too few images.
+~~~bash
+docker compose logs -f backend
+~~~
 
-Click **Export YOLO** to download a ZIP containing `data.yaml`, `images/{train,val,test}`, and matching `labels/{train,val,test}` directories. Labels use normalized YOLO detection rows: `class_id x_center y_center width height`. The class id is the zero-based project-class order. Empty-label images are included with an empty `.txt` file, which is valid for YOLO training.
+Stop containers without deleting data:
 
-Train, for example, with Ultralytics after unzipping:
+~~~bash
+docker compose down
+~~~
 
-```bash
-yolo detect train data=/path/to/dataset/data.yaml model=yolo11n.pt epochs=50
-```
+> Do not run docker compose down -v unless you intentionally want to erase the PostgreSQL volume.
 
-## AI-assisted labeling and safe class mapping
+## First-use workflow
 
-Phase 3 uses Ultralytics detection with the stable `yolo11n.pt` fallback (rather than `yolo26n.pt`, which is not consistently available across Ultralytics environments). The model is loaded lazily and cached after the first **Run Auto Labeling** request; startup and tests never download model weights.
+1. Open http://localhost:5173 and choose **Get Started**.
+2. Register and verify your email when verification is enabled.
+3. Create or select a workspace.
+4. Create a project:
+   - **Object Detection** for bounding boxes.
+   - **Instance Segmentation** for polygons.
+5. Add classes and upload images.
+6. Open an image, annotate manually or run AI-assisted labeling.
+7. Click **Save**.
+8. Configure Train / Validation / Test on Project Detail and download the YOLO export.
 
-Set these backend variables in `.env` or Docker Compose:
+## Annotation modes
 
-```text
-YOLO_MODEL_PATH=yolo11n.pt
+### Object Detection
+
+Choose a class, select **Bounding Box**, then drag over an object.
+
+~~~text
+class_id x_center y_center width height
+~~~
+
+### Instance Segmentation
+
+Choose a class, select **Polygon**, click vertices, then double-click, press Enter, or choose **Finish polygon**. Escape/Cancel discards the unfinished shape.
+
+The backend checks that polygons have three or more distinct points, non-zero area, no self-intersection, and vertices inside the image.
+
+~~~text
+class_id x1 y1 x2 y2 x3 y3 ...
+~~~
+
+## AI-assisted labeling
+
+Set model locations in your private .env. The Docker defaults are:
+
+~~~dotenv
+YOLO_MODEL_PATH=/app/storage/models/yolo11n.pt
 YOLO_DEVICE=cpu
 YOLO_CONFIDENCE_THRESHOLD=0.25
-YOLO_IOU_THRESHOLD=0.45
-```
 
-Put a downloaded `.pt` file at the configured path, or use the `yolo11n.pt` name and allow Ultralytics to download it only on the first inference request. Use `YOLO_DEVICE=cuda` only on a host with CUDA available; the API returns a clear error otherwise.
-
-The supplied Docker image installs CPU PyTorch for portable inference. For CUDA inference, build an equivalent image with the matching NVIDIA PyTorch wheel and NVIDIA Container Toolkit, then set `YOLO_DEVICE=cuda`.
-
-### Headless Docker runtime
-
-The backend deliberately replaces GUI OpenCV with `opencv-python-headless`. This prevents Linux GUI/X11 dependencies such as `libxcb.so.1` from being loaded during YOLO inference. The image retains `libglib2.0-0`, which is a non-GUI runtime dependency used by common image-processing wheels. Do not install `opencv-python` alongside the headless package.
-
-### Annotation and class deletion
-
-The editor's **Delete All Labels** action deletes only saved annotations on the current image; it deliberately leaves pending AI predictions untouched. Accepted prediction records linked to deleted labels are marked rejected so their annotation foreign keys cannot become invalid. It sends `DELETE /api/images/{image_id}/annotations` and resets client state before a subsequent save can restore stale boxes.
-
-Project classes can be deleted from Project Detail. The backend returns `409 Conflict` instead of deleting a class that is referenced by annotations, AI predictions, or an AI class mapping. Delete or remap those references first; existing annotation data is never cascaded away.
-
-Images can be deleted from the **⋯** menu in the Images tab, or in bulk after selecting images. The API is `DELETE /api/images/{image_id}` and `POST /api/images/bulk-delete`. Bulk deletion validates every ID belongs to the specified project before changing anything. Related predictions are removed before annotations and image rows, while project classes and all other images remain untouched. Image files are moved into `storage/.trash` before the database commit, restored if the commit fails, and physically removed after it succeeds. A successful response includes `cleanup_warnings` if a file was already missing or the final filesystem cleanup needs attention.
-
-Projects can be deleted from the Projects-card **⋯** menu through `DELETE /api/projects/{project_id}`. The UI requires the exact project name before it enables deletion. The backend quarantines only `storage/projects/{project_id}` then, in one transaction, removes that project's predictions, annotations, mappings, images, classes, and project record. It never touches model weights, other project folders, or database volumes. A response can include `cleanup_warnings` if post-commit storage cleanup needs follow-up.
-
-An explicit mapping always has priority. Otherwise the API only matches a project class by the same trimmed, case-insensitive name; it never uses a model class index, database ID, first class, or fuzzy match. A prediction with no match is displayed as **New Class**. Accepting it (or Accept All) creates that class and the annotation atomically; rejecting it creates nothing. This makes `dog` remain `dog`, rather than being silently assigned to an unrelated project class.
-
-Select a project class and choose **Save mapping** to persist an explicit override. Pink dashed shapes are AI proposals; solid shapes are saved annotations. Review, edit, accept, or reject each prediction, or Accept All. From Project Detail, select up to 20 detection images and run batch auto-labeling; individual failures are reported without cancelling other images.
-
-## Instance segmentation
-
-Create a project as **Instance Segmentation** to use polygons. In the editor, choose a class and **Polygon**, click vertices on the image, then double-click, press Enter, or select **Finish polygon**. Escape/Cancel discards the unfinished shape. Polygon coordinates are stored in original-image pixels; the API rejects fewer than three distinct points, zero-area polygons, self-intersections, and vertices outside the image. The current SVG editor supports drawing/display; draggable vertex editing and zoom/pan are not fully implemented. Viewers cannot draw, save, delete or run AI.
-
-Instance Segmentation projects use **Auto Segment**, which produces reviewable dashed polygon proposals. Configure the cached CPU model with:
-
-```text
-YOLO_SEG_MODEL_PATH=yolo11n-seg.pt
+YOLO_SEG_MODEL_PATH=/app/storage/models/yolo11n-seg.pt
 YOLO_SEG_DEVICE=cpu
 YOLO_SEG_CONFIDENCE_THRESHOLD=0.25
-YOLO_SEG_IOU_THRESHOLD=0.45
-```
+~~~
 
-The confidence control is sent per request. The segmentation model is loaded lazily only once per backend process. Download or provide the configured `.pt` model before its first inference. A single YOLO mask contour is stored as one polygon. Masks with holes or separate disconnected components cannot be represented losslessly in the Phase 4 single-polygon schema, so this MVP does not claim to preserve that geometry.
+The model loads only on the first inference request. Put a compatible model file in storage/models/, or permit Ultralytics to retrieve the configured public model at first use.
 
-For a segmentation project, **Export YOLO** writes normalized polygon rows:
+Pending AI results are visually distinct from saved labels. Accepting one creates an official annotation credited to the accepting member, with source marked AI-assisted. Missing classes are created only when their proposal is accepted.
 
-```text
-class_id x1 y1 x2 y2 x3 y3 ...
-```
+## YOLO dataset export
 
-Every saved segmentation annotation must be a valid polygon; bounding boxes are never silently converted to segmentation labels. Detection export remains `class_id x_center y_center width height`.
+Project Detail lets you save persistent **Train / Validation / Test** percentages. The default is **80 / 10 / 10**. Each image receives one stable split, so later exports are consistent.
 
-## Coordinates and architecture
+An export archive contains:
 
-The editor displays a scaled SVG canvas and converts every rectangle and polygon to original image pixels before it reaches FastAPI. Backend validation rejects geometry outside image dimensions and classes from another project. The frontend uses `useAnnotations` to diff new, changed, and removed annotations when **Save** is clicked.
+~~~text
+<project-name>/
+├── data.yaml
+├── images/
+│   ├── train/
+│   ├── val/
+│   └── test/
+└── labels/
+    ├── train/
+    ├── val/
+    └── test/
+~~~
 
-`backend/app` is split into models, schemas, services, and routers. `frontend/src` contains pages, a reusable SVG canvas component, workspace/auth contexts, API service, types, hooks, and coordinate utilities. Future annotation types can extend the `annotations` domain without changing the project/image APIs. Docker model weights persist in `storage/models`, outside deletable project folders.
+Images without annotations are included with an empty label file. Class IDs are zero-based and follow the stable project-class order.
+
+Train with Ultralytics after extracting the ZIP:
+
+~~~bash
+yolo detect train data=/path/to/dataset/data.yaml model=yolo11n.pt epochs=50
+yolo segment train data=/path/to/dataset/data.yaml model=yolo11n-seg.pt epochs=50
+~~~
+
+## Workspaces and roles
+
+Every project belongs to a workspace. The backend checks workspace membership and role permissions for every protected resource.
+
+| Role | Typical access |
+| --- | --- |
+| Owner | Full control, including workspace deletion |
+| Admin | Team and project administration |
+| Annotator | Create/edit labels; run and review AI suggestions |
+| Reviewer | Review labels and AI suggestions |
+| Viewer | Read-only projects, images, and attribution |
+
+Saved annotations retain the original creator even if another member edits them later. A stale concurrent save returns a reload message instead of overwriting the latest data.
+
+## Email configuration
+
+The default is offline development mode:
+
+~~~dotenv
+EMAIL_PROVIDER=file
+~~~
+
+Development messages are written privately to storage/.emails/ and do not reach an inbox.
+
+For SMTP delivery, fill these values in the **untracked** .env, then restart the backend:
+
+~~~dotenv
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USE_STARTTLS=true
+SMTP_USERNAME=your-sender@example.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=your-sender@example.com
+SMTP_FROM_NAME=AnnotateAI
+~~~
+
+For Gmail, use a Gmail App Password, not the normal account password.
+
+## Important environment variables
+
+Start from [.env.example](.env.example).
+
+| Variable | Purpose |
+| --- | --- |
+| APP_ENV | development, test, or production |
+| JWT_SECRET_KEY | 32+ character secret required in production |
+| CORS_ORIGINS | Comma-separated browser-origin allowlist |
+| FRONTEND_URL | Public app URL used in email links |
+| AUTH_COOKIE_SECURE | Set true behind HTTPS |
+| EMAIL_PROVIDER | file for offline development or smtp for delivery |
+| EMAIL_VERIFICATION_REQUIRED | Require verified email before normal account use |
+| YOLO_MODEL_PATH / YOLO_SEG_MODEL_PATH | Model file locations |
+| YOLO_DEVICE / YOLO_SEG_DEVICE | cpu or a supported CUDA device |
+
+Production requires HTTPS, explicit CORS origins, secure cookies, a strong JWT secret, a public FRONTEND_URL, and SMTP.
+
+## Project structure
+
+~~~text
+.
+├── backend/
+│   ├── app/
+│   │   ├── models/       # SQLAlchemy domain models
+│   │   ├── routers/      # FastAPI endpoints
+│   │   ├── schemas/      # API schemas
+│   │   └── services/     # AI, export, auth, email, RBAC
+│   ├── alembic/          # database migrations
+│   └── tests/
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   ├── auth/
+│   │   └── workspaces/
+│   └── public/
+├── storage/              # private runtime data; ignored by Git
+├── docker-compose.yml
+└── .env.example
+~~~
+
+## API overview
+
+All APIs use the /api prefix. Interactive OpenAPI documentation is available at http://localhost:8000/docs.
+
+| Area | Example endpoints |
+| --- | --- |
+| Authentication | POST /api/auth/register, POST /api/auth/login, POST /api/auth/refresh |
+| Workspaces | GET /api/workspaces, POST /api/workspaces/{id}/invitations |
+| Projects | GET/POST /api/projects, GET /api/projects/{id} |
+| Images | POST /api/projects/{id}/images, GET /api/images/{id} |
+| Annotations | GET/POST /api/images/{id}/annotations, PUT /api/images/{id}/annotations |
+| AI review | POST /api/images/{id}/auto-label, POST /api/predictions/{id}/accept |
+| Dataset | PUT /api/projects/{id}/dataset/split, POST /api/projects/{id}/dataset/export/yolo |
+
+## Local development
+
+### Backend
+
+~~~bash
+cd backend
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux:
+# source .venv/bin/activate
+
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+~~~
+
+Configure DATABASE_URL, STORAGE_PATH, auth, CORS, and email settings first. SQLite is suitable for small local tests; PostgreSQL is required for complete workspace collaboration.
+
+### Frontend
+
+~~~bash
+cd frontend
+npm ci
+npm run dev
+~~~
+
+The Vite server runs at http://localhost:5173. Configure VITE_API_URL if your backend is elsewhere.
 
 ## Tests
 
-Run backend tests with `pytest` from `backend`; frontend coordinate tests with `npm test` from `frontend`.
+Run tests inside Docker:
+
+~~~bash
+docker compose run --rm --no-deps backend python -m pytest -q
+docker compose run --rm --no-deps frontend sh -c "npm test && npm run build"
+~~~
+
+Or run them directly:
+
+~~~bash
+cd backend
+pytest
+
+cd ../frontend
+npm test
+npm run build
+~~~
+
+Tests use isolated database/storage configuration and file-mode email. They do not send real email or require a YOLO model download.
+
+## Push this project to GitHub
+
+1. Create a new empty repository on GitHub.
+2. From the project directory, verify that secrets and private data are ignored:
+
+   ~~~powershell
+   git status --short
+   git check-ignore .env storage/.auth-secret storage/.emails
+   ~~~
+
+3. Initialize and push:
+
+   ~~~powershell
+   git init
+   git add .
+   git status
+   git commit -m "Initial commit: AnnotateAI data annotation platform"
+   git branch -M main
+   git remote add origin https://github.com/<your-github-username>/<your-repository-name>.git
+   git push -u origin main
+   ~~~
+
+If Git is already initialized, skip git init. Before git add ., check that git status does **not** include .env, storage/, *.pt, backend/annotation.db, or frontend/node_modules/.
+
+## Documentation
+
+- [Authentication and account management](PHASE5_AUTH.md)
+- [Workspace collaboration and RBAC](PHASE6_WORKSPACES.md)
+- [Real email delivery](PHASE6_2_EMAIL.md)
+- [Annotation attribution](PHASE6_3_ATTRIBUTION.md)
+- [Landing page implementation](PHASE6_4_LANDING.md)
+
+## Known limitations
+
+- The SVG editor supports drawing/displaying boxes and polygons; vertex dragging and interactive zoom/pan are not implemented.
+- One segmentation label stores one polygon. Holes and disconnected mask components are not represented losslessly.
+- Attribution stores the creator and latest editor, not a complete edit history.
+- Very small datasets may have an empty validation or test split.
+- SMTP acceptance does not prove inbox arrival.
+- Localhost deployment is intended for the host machine; use a reachable HTTPS domain for external collaborators.
+
+## License
+
+No license file is currently included. Add a license before publishing or accepting external contributions.
+
