@@ -6,6 +6,15 @@ AnnotateAI is a full-stack platform for preparing computer-vision datasets. Team
 
 ## Features
 
+Existing annotations can be corrected directly: move/resize a box, drag polygon
+vertices, or change an object's class, then Save while retaining its ID and
+creator. Hierarchy permissions and soft-delete audit are enforced by the backend.
+See [in-place correction guide](PHASE6_6_CORRECTION.md).
+
+Sessions expire after 60 minutes without user activity, with a warning 5 minutes
+before expiry. See [session inactivity policy](PHASE6_5_IDLE_SESSION.md) for setup,
+multi-tab behavior and unsaved annotation handling.
+
 - **Image annotation** — bounding boxes for object detection and polygons for instance segmentation.
 - **AI-assisted labeling** — YOLO detection and segmentation suggestions; review, refine, accept, or reject each proposal.
 - **Team workspaces** — verified-email invitations and Owner, Admin, Annotator, Reviewer, and Viewer roles.
@@ -36,7 +45,7 @@ AnnotateAI is a full-stack platform for preparing computer-vision datasets. Team
 ### 1. Clone and configure
 
 ~~~bash
-git clone https://github.com/<your-github-username>/annotation-platform.git
+git clone https://github.com/MouhJi/annotation-platform.git
 cd annotation-platform
 ~~~
 
@@ -350,7 +359,7 @@ If Git is already initialized, skip git init. Before git add ., check that git s
 
 ## Known limitations
 
-- The SVG editor supports drawing/displaying boxes and polygons; vertex dragging and interactive zoom/pan are not implemented.
+- The SVG editor supports box movement/resizing and polygon vertex dragging; interactive zoom/pan and adding/removing polygon vertices are not implemented.
 - One segmentation label stores one polygon. Holes and disconnected mask components are not represented losslessly.
 - Attribution stores the creator and latest editor, not a complete edit history.
 - Very small datasets may have an empty validation or test split.

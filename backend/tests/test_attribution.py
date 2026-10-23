@@ -16,12 +16,12 @@ def test_creator_editor_noop_spoof_and_rename(team):
     assert a['created_at'].endswith('Z')
     role(team,'annotator')
     url=f'/api/annotations/{a["id"]}'
-    noop=member[0].put(url,json=geometry(c)).json()
+    noop=owner[0].put(url,json=geometry(c)).json()
     assert noop['updated_by']==a['updated_by'] and noop['updated_at']==a['updated_at']
-    edited=member[0].put(url,json={**geometry(c),'width':12,'created_by':stranger[2]['id'],'updated_by':stranger[2]['id'],'expected_version':1}).json()
-    assert edited['created_by']==a['created_by'] and edited['updated_by']['id']==member[2]['id']
+    edited=owner[0].put(url,json={**geometry(c),'width':12,'created_by':stranger[2]['id'],'updated_by':stranger[2]['id'],'expected_version':1}).json()
+    assert edited['created_by']==a['created_by'] and edited['updated_by']['id']==owner[2]['id']
     assert edited['id']==a['id'] and edited['version']==2
-    assert member[0].put(url,json={**geometry(c),'expected_version':1}).status_code==409
+    assert owner[0].put(url,json={**geometry(c),'expected_version':1}).status_code==409
     owner[0].patch('/api/users/me',json={'full_name':'Nguyễn An'})
     listed=member[0].get(f'/api/images/{i["id"]}/annotations').json()[0]
     assert listed['created_by']['full_name']=='Nguyễn An'
@@ -29,7 +29,7 @@ def test_creator_editor_noop_spoof_and_rename(team):
     assert stranger[0].get(f'/api/images/{i["id"]}/annotations').status_code==404
     assert stranger[0].put(url,json=geometry(c)).status_code==404
     owner[0].delete(f'/api/workspaces/{ws["id"]}/members/{member[2]["id"]}')
-    assert owner[0].get(f'/api/images/{i["id"]}/annotations').json()[0]['updated_by']['id']==member[2]['id']
+    assert owner[0].get(f'/api/images/{i["id"]}/annotations').json()[0]['updated_by']['id']==owner[2]['id']
 
 
 def test_atomic_batch_identity_authors_conflict_and_validation(team):
@@ -40,14 +40,14 @@ def test_atomic_batch_identity_authors_conflict_and_validation(team):
     result=member[0].put(url,json=payload)
     assert result.status_code==200,result.text
     old,new=result.json()
-    assert old==a and new['created_by']['id']==member[2]['id']
+    assert old['id']==a['id'] and old['created_by']==a['created_by'] and new['created_by']['id']==member[2]['id']
     assert member[0].put(url,json=payload).status_code==409
     versions={str(x['id']):x['version'] for x in result.json()}
     invalid={'expected_versions':versions,'items':[{**geometry(c),'id':a['id'],'width':15},{**geometry(c),'x':1000}]}
-    assert member[0].put(url,json=invalid).status_code==400
-    assert owner[0].get(url).json()==result.json()
-    saved=member[0].put(url,json={'expected_versions':versions,'items':[{**geometry(c),'id':a['id'],'width':15}]}).json()
-    assert len(saved)==1 and saved[0]['created_by']==a['created_by'] and saved[0]['updated_by']['id']==member[2]['id']
+    assert owner[0].put(url,json=invalid).status_code==400
+    assert member[0].get(url).json()==result.json()
+    saved=owner[0].put(url,json={'expected_versions':versions,'items':[{**geometry(c),'id':a['id'],'width':15}]}).json()
+    assert len(saved)==1 and saved[0]['created_by']==a['created_by'] and saved[0]['updated_by']['id']==owner[2]['id']
 
 
 def test_polygon_legacy_and_constant_author_query_count(team):
@@ -59,8 +59,8 @@ def test_polygon_legacy_and_constant_author_query_count(team):
     polygon=owner[0].post(f'/api/images/{i["id"]}/annotations',json=payload).json()
     assert polygon['created_by']['id']==owner[2]['id'] and polygon['points']==payload['points']
     role(team,'reviewer')
-    edited=member[0].put(f'/api/annotations/{polygon["id"]}',json={**payload,'points':[[6,5],[30,5],[30,25],[6,25]]}).json()
-    assert edited['created_by']==polygon['created_by'] and edited['updated_by']['id']==member[2]['id']
+    edited=owner[0].put(f'/api/annotations/{polygon["id"]}',json={**payload,'expected_version':1,'points':[[6,5],[30,5],[30,25],[6,25]]}).json()
+    assert edited['created_by']==polygon['created_by'] and edited['updated_by']['id']==owner[2]['id']
     statements=[]
     def count(conn,cursor,statement,*args): statements.append(statement)
     event.listen(engine,'before_cursor_execute',count)

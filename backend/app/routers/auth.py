@@ -2,7 +2,7 @@ import uuid
 from datetime import timedelta
 from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from sqlalchemy import select, update
+from sqlalchemy import select, update, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from ..auth_config import settings
@@ -16,6 +16,7 @@ from ..services.auth_security import hash_password, verify_password, opaque_toke
 from ..services.email_service import prepare_delivery, deliver_email
 from ..services.email_templates import action_email
 from ..services.workspace_service import personal_workspace
+from ..services.session_idle import enforce_idle, session_out, policy
 
 COOKIE = "annotation_refresh"
 COOKIE_PATH = "/api/auth"
@@ -42,7 +43,7 @@ def set_cookie(response, raw):
 def clear_cookie(response):
     response.delete_cookie(COOKIE, path=COOKIE_PATH, httponly=True, secure=settings()["secure"], samesite="lax")
 def auth_out(user, session):
-    return {"access_token": access_token(user, session), "token_type": "bearer", "expires_in": settings()["access_minutes"]*60, "user": user_out(user)}
+    return {"access_token": access_token(user, session), "token_type": "bearer", "expires_in": settings()["access_minutes"]*60, "user": user_out(user), "session": session_out(session)}
 def device_name(user_agent):
     browser = next((name for marker, name in [("Edg/", "Microsoft Edge"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"), ("Safari/", "Safari")] if marker in user_agent), "Browser")
     platform = next((name for marker, name in [("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"), ("Windows", "Windows"), ("Macintosh", "macOS"), ("Linux", "Linux")] if marker in user_agent), "Device")
@@ -101,6 +102,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
         raise HTTPException(401, "Session expired or invalid")
     user = db.get(User, session.user_id)
     if session.revoked_at or aware(session.expires_at) <= utcnow() or not user or user.status != "active": raise HTTPException(401, "Session expired or invalid")
+    enforce_idle(db, session)
     next_raw = opaque_token()
     changed = db.execute(update(UserSession).where(UserSession.id == session.id, UserSession.refresh_token_hash == digest, UserSession.revoked_at.is_(None)).values(refresh_token_hash=token_hash(next_raw), last_used_at=utcnow()))
     if changed.rowcount != 1: db.rollback(); raise HTTPException(401, "Session expired or invalid")
@@ -108,13 +110,32 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     set_cookie(response, next_raw); return auth_out(user, session)
 
 @router.post("/logout")
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+def logout(request: Request, response: Response, payload: dict | None = None, db: Session = Depends(get_db)):
     digest = token_hash(request.cookies.get(COOKIE, ""))
     session = db.scalar(select(UserSession).where(UserSession.refresh_token_hash == digest))
     spent = db.get(UsedRefreshToken, digest)
+    target = str(session.id) if session else str(spent.session_id) if spent else None
+    if payload and payload.get("session_id") and payload["session_id"] != target:
+        return {"message": "Session already ended"}
     if session: session.revoked_at = utcnow()
     elif spent: db.execute(update(UserSession).where(UserSession.id == spent.session_id).values(revoked_at=utcnow()))
     db.commit(); clear_cookie(response); return {"message": "Signed out"}
+
+@router.get("/session")
+def session_status(request: Request, user=Depends(get_active_user), db: Session=Depends(get_db)):
+    return session_out(db.get(UserSession, request.state.session_id))
+
+@router.post("/activity")
+def activity(request: Request, user=Depends(get_active_user), db: Session=Depends(get_db)):
+    limiter.check(request, "session-activity", str(request.state.session_id), limit=120)
+    now = utcnow(); seconds, _ = policy()
+    changed = db.execute(update(UserSession).where(UserSession.id == request.state.session_id,
+        UserSession.user_id == user.id, UserSession.revoked_at.is_(None), UserSession.expires_at > now,
+        UserSession.last_activity_at > now-timedelta(seconds=seconds)).values(last_activity_at=case((UserSession.last_activity_at < now, now), else_=UserSession.last_activity_at)).execution_options(synchronize_session=False))
+    if changed.rowcount != 1:
+        db.rollback(); raise HTTPException(401, "Your session expired due to inactivity.")
+    db.commit()
+    return session_out(db.get(UserSession, request.state.session_id))
 
 @router.post("/logout-all")
 def logout_all(response: Response, user: User = Depends(get_active_user), db: Session = Depends(get_db)):

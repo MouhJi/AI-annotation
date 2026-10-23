@@ -19,6 +19,8 @@ def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials
         session = db.get(UserSession, uuid.UUID(claims["sid"]))
     except (jwt.InvalidTokenError, ValueError, KeyError): raise error
     if not user or not session or session.user_id != user.id or session.revoked_at or aware(session.expires_at) <= utcnow(): raise error
+    from .services.session_idle import enforce_idle
+    enforce_idle(db, session)
     request.state.session_id = session.id
     return user
 

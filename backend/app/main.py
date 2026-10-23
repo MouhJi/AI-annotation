@@ -13,6 +13,8 @@ from .routers import projects, classes, images, annotations, dataset, auto_label
 storage=Path(os.getenv("STORAGE_PATH","./storage")); storage.mkdir(parents=True,exist_ok=True)
 (storage / "models").mkdir(exist_ok=True)
 config = settings()
+from .services.session_idle import policy
+policy()
 app=FastAPI(title="Annotation Platform API",version="0.1.0")
 app.add_middleware(CORSMiddleware,allow_origins=config["origins"],allow_credentials=True,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type"],expose_headers=["Content-Disposition"])
 for router in (projects.router, classes.router, images.router, annotations.router, dataset.router, auto_label.router):
@@ -23,6 +25,8 @@ app.include_router(workspaces.router)
 @app.middleware("http")
 async def response_security(request, call_next):
     response = await call_next(request)
+    if response.status_code == 401 and request.url.path in {"/api/auth/refresh", "/api/auth/activity"}:
+        auth.clear_cookie(response)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Frame-Options"] = "DENY"

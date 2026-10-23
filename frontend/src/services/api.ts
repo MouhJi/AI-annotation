@@ -4,25 +4,31 @@ export const API_URL=import.meta.env.VITE_API_URL ?? "http://localhost:8000/api"
 export const authApi=axios.create({baseURL:API_URL,withCredentials:true});
 export const api=axios.create({baseURL:API_URL,withCredentials:true});
 export type User={id:string;email:string;full_name:string;status:string;email_verified:boolean;created_at:string};
-type AuthResult={access_token:string;user:User};
+export type SessionPolicy={id:string;server_time:string;idle_expires_at:string;idle_timeout_seconds:number;warning_seconds:number};
+export type AuthResult={access_token:string;user:User;session?:SessionPolicy};
+let sessionPolicy:SessionPolicy|null=null;
+let authGeneration=0;
+export const getSessionPolicy=()=>sessionPolicy;
 let accessToken:string|null=null;
 let currentUser:User|null=null;
 let refreshPromise:Promise<AuthResult>|null=null;
 const listeners=new Set<(user:User|null)=>void>();
-export function setAuth(data:AuthResult|null){accessToken=data?.access_token??null;currentUser=data?.user??null;listeners.forEach(listener=>listener(currentUser));}
+export function setAuth(data:AuthResult|null){if(!data){authGeneration++;sessionPolicy=null} else if(data.session){sessionPolicy=data.session;window.dispatchEvent(new CustomEvent('session-policy',{detail:data.session}))}accessToken=data?.access_token??null;currentUser=data?.user??null;listeners.forEach(listener=>listener(currentUser));}
 export function subscribeAuth(listener:(user:User|null)=>void){listeners.add(listener);listener(currentUser);return ()=>{listeners.delete(listener)}}
 export function updateAuthUser(user:User){currentUser=user;listeners.forEach(listener=>listener(user))}
 export async function refreshSession():Promise<AuthResult>{
  if(!refreshPromise){
-  const refresh=async()=>{const data=(await authApi.post<AuthResult>("/auth/refresh")).data;setAuth(data);return data};
+  const generation=authGeneration;
+  const refresh=async()=>{const data=(await authApi.post<AuthResult>("/auth/refresh")).data;if(generation!==authGeneration)throw new Error('Session ended');setAuth(data);return data};
   // Serialize cookie rotations across tabs where Web Locks are supported.
   const run=async():Promise<AuthResult>=>typeof navigator!=="undefined"&&navigator.locks?await navigator.locks.request("annotation-refresh",refresh):await refresh();
-  refreshPromise=run().catch(error=>{setAuth(null);throw error}).finally(()=>{refreshPromise=null});
+  refreshPromise=run().catch(error=>{if(generation===authGeneration&&error.response?.data?.detail==='Your session expired due to inactivity.')sessionStorage.setItem('annotation-idle-message',error.response.data.detail);if(generation===authGeneration)setAuth(null);throw error}).finally(()=>{refreshPromise=null});
  }
  return refreshPromise;
 }
 api.interceptors.request.use(config=>{if(accessToken)config.headers.Authorization=`Bearer ${accessToken}`;return config});
 api.interceptors.response.use(response=>response,async error=>{
+ if(error.response?.status===401&&error.response?.data?.detail==='Your session expired due to inactivity.'){sessionStorage.setItem('annotation-idle-message',error.response.data.detail);window.dispatchEvent(new Event('session-idle-expired'));setAuth(null);return Promise.reject(error)}
  if(typeof window!=="undefined"&&[403,404].includes(error.response?.status)&&/\/(projects|images|annotations|predictions|storage)\//.test(error.config?.url??""))window.dispatchEvent(new Event("workspace-access-denied"));
  const config=error.config as (InternalAxiosRequestConfig & {_authRetried?:boolean})|undefined;
  if(error.response?.status!==401||!config)return Promise.reject(error);
@@ -30,7 +36,7 @@ api.interceptors.response.use(response=>response,async error=>{
  config._authRetried=true;
  try{await refreshSession();return api.request(config)}catch{setAuth(null);return Promise.reject(error)}
 });
-export async function signOut(all=false){await api.post(all?"/auth/logout-all":"/auth/logout");setAuth(null)}
+export async function signOut(all=false){try{await api.post(all?"/auth/logout-all":"/auth/logout")}finally{window.dispatchEvent(new Event('session-logout'));setAuth(null)}}
 export const imageUrl=(path:string)=>`${API_URL.replace(/\/api$/,"")}${path}`;
 export function errorMessage(error:unknown,fallback="Request failed"){
  if(axios.isAxiosError(error)){

@@ -44,4 +44,6 @@ class AnnotationOut(AnnotationBase):
     updated_at: datetime
     source: str
     version: int
+    can_edit: bool = False
+    can_delete: bool = False
     model_config = ConfigDict(from_attributes=True)

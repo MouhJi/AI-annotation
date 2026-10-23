@@ -24,11 +24,11 @@ def test_polygon_create_update_delete_and_validation():
     created = client.post(f"/api/images/{image['id']}/annotations", json=payload)
     assert created.status_code == 201 and created.json()["annotation_type"] == "polygon"
     assert created.json()["x"] == 10 and created.json()["width"] == 40
-    updated = client.put(f"/api/annotations/{created.json()['id']}", json={**payload, "points": [[20, 10], [60, 10], [40, 45]]})
+    updated = client.put(f"/api/annotations/{created.json()['id']}", json={**payload, "expected_version":1, "points": [[20, 10], [60, 10], [40, 45]]})
     assert updated.status_code == 200 and updated.json()["points"][0] == [20.0, 10.0]
     invalid = client.post(f"/api/images/{image['id']}/annotations", json={**payload, "points": [[1, 1], [2, 2], [3, 3]]})
     assert invalid.status_code == 400
-    assert client.delete(f"/api/annotations/{created.json()['id']}").status_code == 204
+    assert client.delete(f"/api/annotations/{created.json()['id']}?expected_version=2").status_code == 204
 
 def test_polygon_accepts_duplicate_closing_point_from_double_click():
     project = _project(); label = client.post(f"/api/projects/{project['id']}/classes", json={"name": "dog"}).json(); image = _upload(project["id"])

@@ -1,6 +1,7 @@
 import ProtectedImage from "./ProtectedImage";
 import {annotationLabel} from "./AnnotationAttribution";
-import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
+import {moveGeometry} from './annotationGeometry';
 import type { DraftAnnotation, LabelClass, Point, Prediction } from "../types";
 import "./AnnotationCanvas.css";
 
@@ -27,6 +28,12 @@ const dedupePolygonPoints = (points: Point[]) => {
 
 /** SVG avoids react-konva's separate reconciler and remains fully usable for labeling. */
 export default function AnnotationCanvas(props: Props) {
+  const svgRef=useRef<SVGSVGElement>(null);
+  const gesture=useRef<{annotation:DraftAnnotation;start:Point;handle:string;vertex?:number;pointerId:number}|null>(null);
+  const editable=(a:DraftAnnotation)=>!props.readOnly&&props.mode==='select'&&(a.isNew||a.can_edit===true);
+  const pointerPoint=(event:ReactPointerEvent):Point=>{const rect=svgRef.current!.getBoundingClientRect();return [(event.clientX-rect.left)*props.imageWidth/(rect.width||1),(event.clientY-rect.top)*props.imageHeight/(rect.height||1)]};
+  const begin=(event:ReactPointerEvent,a:DraftAnnotation,handle='move',vertex?:number)=>{event.stopPropagation();props.onSelect(a.id);if(!editable(a)||event.button!==0)return;event.preventDefault();gesture.current={annotation:structuredClone(a),start:pointerPoint(event),handle,vertex,pointerId:event.pointerId};svgRef.current?.setPointerCapture?.(event.pointerId)};
+  const endGesture=()=>{gesture.current=null};
   const [image, setImage] = useState<Dimensions>();
   const [failed, setFailed] = useState(false);
   const [drawStart, setDrawStart] = useState<Point | null>(null);
@@ -36,7 +43,7 @@ export default function AnnotationCanvas(props: Props) {
   const annotations = Array.isArray(props.annotations) ? props.annotations : [];
   const predictions = Array.isArray(props.predictions) ? props.predictions : [];
 
-  useEffect(() => { setImage(undefined); setFailed(false); setDrawStart(null); setTemporaryBox(null); setDraft([]); }, [props.src]);
+  useEffect(() => { setImage(undefined); setFailed(false); setDrawStart(null); setTemporaryBox(null); setDraft([]);endGesture(); }, [props.src]);
   useEffect(() => { if (props.mode !== "polygon") setDraft([]); }, [props.mode]);
 
   const scale = image ? Math.min(1, 900 / image.width, 620 / image.height) : 1;
@@ -74,7 +81,7 @@ export default function AnnotationCanvas(props: Props) {
     if (temporaryBox.width > 2 && temporaryBox.height > 2 && selectedClass) props.onAdd({ class_id: selectedClass.id, class_name: selectedClass.name, annotation_type: "bbox", points: null, ...temporaryBox });
     setDrawStart(null); setTemporaryBox(null);
   };
-  return <div className="canvas"><div className="annotation-surface" style={{ width: displayWidth, height: displayHeight }}><ProtectedImage src={props.src} alt="Annotation target" draggable={false}/><svg viewBox={`0 0 ${image.width} ${image.height}`} onMouseDown={(event) => {
+  return <div className="canvas"><div className="annotation-surface" style={{ width: displayWidth, height: displayHeight }}><ProtectedImage src={props.src} alt="Annotation target" draggable={false}/><svg ref={svgRef} style={{touchAction:props.mode==='select'?'none':undefined}} onPointerMove={event=>{const g=gesture.current;if(!g||props.readOnly)return;const p=pointerPoint(event);props.onChange(g.annotation.id,moveGeometry(g.annotation,p[0]-g.start[0],p[1]-g.start[1],props.imageWidth,props.imageHeight,g.handle,g.vertex))}} onPointerUp={endGesture} onPointerCancel={event=>{const g=gesture.current;if(g)props.onChange(g.annotation.id,g.annotation);endGesture()}} onLostPointerCapture={endGesture} viewBox={`0 0 ${image.width} ${image.height}`} onMouseDown={(event) => {
     if(props.readOnly)return;
     if (props.mode === "draw") {
       if (!classes.some((item) => item.id === props.classId)) { alert("Please select a class first."); return; }
@@ -96,7 +103,7 @@ export default function AnnotationCanvas(props: Props) {
       const labelWidth = Math.min(image.width, (Array.from(label).length * 8 + 10) / scale);
       const labelX = Math.max(0, Math.min(x, image.width - labelWidth));
       const labelY = Math.min(image.height - 18 / scale, Math.max(0, y - 22 / scale));
-      return <g key={`annotation-${id}`} onMouseDown={select}><title>{fullLabel}</title>{polygon ? <polygon points={pointsAttribute(points)} fill={color} fillOpacity="0.18" stroke={color} strokeWidth={props.selected === id ? 3 / scale : 2 / scale}/> : <rect x={x} y={y} width={width} height={height} fill="transparent" stroke={color} strokeWidth={props.selected === id ? 3 / scale : 2 / scale}/>}<g pointerEvents="none"><rect x={labelX} y={labelY} width={labelWidth} height={20 / scale} rx={3 / scale} fill="#0f172a" fillOpacity="0.9"/><text x={labelX + 4 / scale} y={labelY + 14 / scale} fill={color} fontSize={13 / scale}>{label}</text></g></g>;
+      return <g key={`annotation-${id}`} data-annotation-id={id} onMouseDown={select} onPointerDown={event=>begin(event,annotation)}><title>{fullLabel}</title>{polygon ? <polygon points={pointsAttribute(points)} fill={color} fillOpacity="0.18" stroke={color} strokeWidth={props.selected === id ? 3 / scale : 2 / scale}/> : <rect x={x} y={y} width={width} height={height} fill="transparent" stroke={color} strokeWidth={props.selected === id ? 3 / scale : 2 / scale}/>}<g pointerEvents="none"><rect x={labelX} y={labelY} width={labelWidth} height={20 / scale} rx={3 / scale} fill="#0f172a" fillOpacity="0.9"/><text x={labelX + 4 / scale} y={labelY + 14 / scale} fill={color} fontSize={13 / scale}>{label}</text></g>{props.selected===id&&editable(annotation)&&(polygon?points.map(([px,py],vertex)=><circle key={vertex} aria-label={`Vertex ${vertex+1}`} cx={px} cy={py} r={5/scale} fill="white" stroke={color} strokeWidth={2/scale} style={{cursor:'crosshair'}} onPointerDown={event=>begin(event,annotation,'vertex',vertex)}/>):[['nw',x,y],['n',x+width/2,y],['ne',x+width,y],['e',x+width,y+height/2],['se',x+width,y+height],['s',x+width/2,y+height],['sw',x,y+height],['w',x,y+height/2]].map(([handle,hx,hy])=><rect key={handle} aria-label={`Resize ${handle}`} x={Number(hx)-4/scale} y={Number(hy)-4/scale} width={8/scale} height={8/scale} fill="white" stroke={color} strokeWidth={1.5/scale} style={{cursor:`${handle}-resize`}} onPointerDown={event=>begin(event,annotation,String(handle))}/>))}</g>;
     })}
     {predictions.filter((prediction) => prediction.status === "PENDING").map((prediction, index) => {
       const id = numberOr(prediction.id, -100000 - index), points = validPoints(prediction.points), polygon = prediction.prediction_type === "polygon" && points.length >= 3, x = numberOr(prediction.x), y = numberOr(prediction.y), stroke = props.selectedPrediction === id ? "#facc15" : "#ec4899", confidence = numberOr(prediction.confidence);

@@ -36,10 +36,10 @@ def test_delete_all_annotations_only_affects_requested_image():
         with path.open("rb") as file: images.append(client.post(f"/api/projects/{p['id']}/images",files={"files":("a.png",file,"image/png")}).json()[0])
     for image in images:
         assert client.post(f"/api/images/{image['id']}/annotations",json={"class_id":c["id"],"x":5,"y":5,"width":20,"height":10}).status_code==201
-    assert client.delete(f"/api/images/{images[0]['id']}/annotations").json()=={"deleted_count":1}
+    assert client.request("DELETE",f"/api/images/{images[0]['id']}/annotations",json={"expected_versions":{str(a["id"]):a["version"] for a in client.get(f"/api/images/{images[0]['id']}/annotations").json()}}).json()=={"deleted_count":1}
     assert client.get(f"/api/images/{images[0]['id']}/annotations").json()==[]
     assert len(client.get(f"/api/images/{images[1]['id']}/annotations").json())==1
-    assert client.delete(f"/api/images/{images[0]['id']}/annotations").json()=={"deleted_count":0}
+    assert client.request("DELETE",f"/api/images/{images[0]['id']}/annotations",json={"expected_versions":{}}).json()=={"deleted_count":0}
 
 def test_delete_single_image_cleans_annotations_predictions_and_file():
     p=project(); c=client.post(f"/api/projects/{p['id']}/classes",json={"name":"car"}).json()

@@ -33,7 +33,7 @@ def delete(class_id:int,db:Session=Depends(get_db)):
     item=db.get(LabelClass,class_id)
     if not item: raise HTTPException(404,"Class not found")
     references = {
-        "annotations": db.scalar(select(func.count(Annotation.id)).where(Annotation.class_id == class_id)) or 0,
+        "annotations": db.scalar(select(func.count(Annotation.id)).where(Annotation.class_id == class_id).execution_options(include_deleted=True)) or 0,
         "predictions": db.scalar(select(func.count(AutoLabelPrediction.id)).where(AutoLabelPrediction.mapped_class_id == class_id)) or 0,
         "mappings": db.scalar(select(func.count(ProjectClassMapping.id)).where(ProjectClassMapping.class_id == class_id)) or 0,
     }

@@ -1,6 +1,7 @@
 import os
 from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session, with_loader_criteria
+from sqlalchemy import event
 from sqlalchemy.pool import StaticPool
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./annotation.db")
@@ -13,6 +14,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+@event.listens_for(Session, "do_orm_execute")
+def exclude_deleted_annotations(state):
+    if state.is_select and not state.execution_options.get("include_deleted"):
+        from .models import Annotation
+        state.statement = state.statement.options(with_loader_criteria(Annotation, lambda row: row.deleted_at.is_(None), include_aliases=True))
 
 def get_db():
     db = SessionLocal()
