@@ -11,6 +11,12 @@ role, live dashboard, user controls and metadata-only workspace/project views.
 An existing verified account must be explicitly granted access through the trusted
 CLI. See [Platform Admin setup](PHASE6_7_PLATFORM_ADMIN.md).
 
+After sign-in, active verified platform administrators go to `/admin`; other
+accounts go to the workspace dashboard at `/projects`. Workspace Owner/Admin
+roles do not grant platform access. Logout clears client authentication and
+account caches, revokes the server session, and replaces the current URL with
+`/login`. Refresh restores the current session while preserving an allowed URL.
+
 Existing annotations can be corrected directly: move/resize a box, drag polygon
 vertices, or change an object's class, then Save while retaining its ID and
 creator. Hierarchy permissions and soft-delete audit are enforced by the backend.

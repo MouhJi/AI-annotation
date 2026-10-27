@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {api,authApi,getSessionPolicy,setAuth,type SessionPolicy} from '../services/api';
+import {api,getSessionPolicy,revokeSession,setAuth,type SessionPolicy} from '../services/api';
 import {useAuth} from './AuthProvider';
 
 export const IDLE_MESSAGE='Your session expired due to inactivity.';
@@ -21,7 +21,7 @@ export default function IdleSession(){
   const end=(idle:boolean,remote=false)=>{
    if(ended)return;ended=true;const id=policy?.id;setAuth(null);setWarning(false);
    if(id&&!remote){send({kind:'logout',id,idle});
-    const revoke=async()=>{try{const key='annotation-ended-'+id;let sent=false;try{sent=!!localStorage.getItem(key);if(!sent)localStorage.setItem(key,'1')}catch{/* Storage disabled: still revoke. */}if(!sent)await authApi.post('/auth/logout',{session_id:id},{timeout:10000})}catch{/* Server idle enforcement remains authoritative offline. */}};
+    const revoke=async()=>{try{const key='annotation-ended-'+id;let sent=false;try{sent=!!localStorage.getItem(key);if(!sent)localStorage.setItem(key,'1')}catch{/* Storage disabled: still revoke. */}if(!sent)await revokeSession(id)}catch{/* Server idle enforcement remains authoritative offline. */}};
     if(navigator.locks)void navigator.locks.request('annotation-logout',revoke);else void revoke();
    }
    if(idle)sessionStorage.setItem('annotation-idle-message',IDLE_MESSAGE);

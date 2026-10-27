@@ -77,7 +77,7 @@ export default function AnnotationCanvas(props: Props) {
     setTemporaryBox(null); setPanning(false);setEditing(false);
   };
   useEffect(() => {
-    setLoaded(undefined);setFailed(false);setDraft([]);setTemporaryBox(null);
+    setLoaded(current=>current?.src===props.src?current:undefined);setFailed(false);setDraft([]);setTemporaryBox(null);
     gesture.current=null;box.current=null;pan.current=null;setPanning(false);setEditing(false);
     fitMode.current=true;updateView({scale:1,offsetX:0,offsetY:0});
   }, [props.src]);

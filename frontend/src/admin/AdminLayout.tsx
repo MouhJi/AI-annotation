@@ -1,16 +1,29 @@
 import {useEffect,useState} from 'react';
 import {Link,NavLink,Navigate,Outlet,useLocation} from 'react-router-dom';
 import {useAuth} from '../auth/AuthProvider';
-import {api,errorMessage,updateAuthUser,type User} from '../services/api';
+import {api,errorMessage,getAuthGeneration,updateAuthUser,type User} from '../services/api';
+import {isPlatformAdmin} from '../auth/navigation';
 import './Admin.css';
 
 export function AdminRouteGuard(){
- const {user,initializing}=useAuth();const [checked,setChecked]=useState(false);const [allowed,setAllowed]=useState(false);const [error,setError]=useState('');
- useEffect(()=>{let alive=true;setChecked(false);if(!user)return;void api.get<User>('/auth/me').then(({data})=>{if(alive){updateAuthUser(data);setAllowed(!!data.is_platform_admin&&data.email_verified);setChecked(true)}}).catch(e=>{if(alive){setError(errorMessage(e));setChecked(true);setAllowed(false)}});return()=>{alive=false}},[user?.id]);
+ const {user,initializing}=useAuth();const generation=getAuthGeneration();
+ const [result,setResult]=useState<{generation:number;userId:string;allowed:boolean;error?:string}>();
+ const [retry,setRetry]=useState(0);
+ useEffect(()=>{
+  let alive=true;
+  if(initializing||!user)return;
+  void api.get<User>('/auth/me').then(({data})=>{
+   if(!alive||generation!==getAuthGeneration())return;
+   if(data.id!==user.id)throw new Error('Session identity changed');
+   updateAuthUser(data);setResult({generation,userId:user.id,allowed:isPlatformAdmin(data)});
+  }).catch(e=>{if(alive&&generation===getAuthGeneration())setResult({generation,userId:user.id,allowed:false,error:errorMessage(e)})});
+  return()=>{alive=false};
+ },[user?.id,initializing,generation,retry]);
  if(initializing)return <main className="editor-loading">Restoring session…</main>;
- if(!user)return <Navigate to="/login" replace state={{from:'/admin'}}/>;
- if(!checked)return <main className="editor-loading">Checking platform access…</main>;
- if(!allowed)return <main className="admin-denied"><h1>403 · Platform access required</h1><p>{error||'Workspace roles do not grant platform administrator access.'}</p><Link to="/projects">Back to app</Link></main>;
+ if(!user)return <Navigate to="/login" replace state={null}/>;
+ if(!result||result.generation!==generation||result.userId!==user.id)return <main className="editor-loading">Checking platform access…</main>;
+ if(result.error)return <main className="admin-denied"><h1>Unable to check platform access</h1><p role="alert">{result.error}</p><button onClick={()=>{setResult(undefined);setRetry(v=>v+1)}}>Retry</button><Link to="/projects">Back to app</Link></main>;
+ if(!result.allowed||!isPlatformAdmin(user))return <Navigate to="/projects" replace state={null}/>;
  return <Outlet/>;
 }
 

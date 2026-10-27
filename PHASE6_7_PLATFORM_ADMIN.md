@@ -114,6 +114,22 @@ A separate AdminLayout/route guard sits outside WorkspaceProvider so platform
 access does not depend on membership in any particular workspace. The guard checks
 the current account against the server before rendering admin content.
 
+Login uses the user returned by `/api/auth/login`, independently of previous
+`location.state.from` or stored redirects: active verified platform administrators
+land on `/admin`, everyone else on `/projects`. Login and logout both replace the
+history entry. Authenticated non-admin accounts visiting any admin route are
+redirected to `/projects`; unauthenticated accounts go to `/login`. Session
+restoration and the live `/auth/me` check display loading states before deciding
+access. A failed access check offers Retry without showing admin content.
+
+Logout clears memory tokens/profile, account workspace selection and stored
+redirect keys immediately, then revokes the captured server session. Login,
+refresh and logout serialize refresh-cookie writes, including across tabs when
+Web Locks are available. Session generation checks discard old API responses and
+errors; protected subtrees remount between sessions to clear account caches.
+Refreshing an allowed admin or workspace URL keeps that URL. Backend admin APIs
+continue to enforce `require_platform_admin` independently of frontend routing.
+
 Routes: `/admin`, `/admin/users`, `/admin/users/:userId`,
 `/admin/workspaces`, `/admin/workspaces/:workspaceId`, `/admin/projects`,
 `/admin/audit-logs`, `/admin/profile`.
