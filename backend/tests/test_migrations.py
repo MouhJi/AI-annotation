@@ -27,5 +27,5 @@ def test_alembic_preserves_populated_legacy_database(tmp_path):
         assert connection.execute(text('SELECT owner_user_id FROM projects WHERE id=100')).scalar() is None
         assert connection.execute(text('SELECT filepath,split FROM images WHERE id=100')).one()==('/saved/fox.png','train')
         assert connection.execute(text('SELECT count(*) FROM users')).scalar()==0
-        assert connection.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0008_annotation_correction'
+        assert connection.execute(text('SELECT version_num FROM alembic_version')).scalar()=='0009_platform_admin'
     assert {'users','user_sessions','password_reset_tokens','email_verification_tokens'}<=set(inspect(engine).get_table_names())

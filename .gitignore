@@ -7,7 +7,8 @@ frontend/dist/
 __pycache__/
 .pytest_cache/
 *.pt
-models/
+/models/
+/storage/models/
 .env
 storage/.auth-secret
 storage/.emails/

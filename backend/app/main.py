@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .auth_config import settings
 from .auth_dependencies import get_active_user, require_resource_access, owned_project
 from . import models
-from .routers import projects, classes, images, annotations, dataset, auto_label, auth, workspaces
+from .routers import projects, classes, images, annotations, dataset, auto_label, auth, workspaces, admin
 
 storage=Path(os.getenv("STORAGE_PATH","./storage")); storage.mkdir(parents=True,exist_ok=True)
 (storage / "models").mkdir(exist_ok=True)
@@ -21,6 +21,7 @@ for router in (projects.router, classes.router, images.router, annotations.route
     app.include_router(router, dependencies=[Depends(require_resource_access)])
 app.include_router(auth.router); app.include_router(auth.users_router)
 app.include_router(workspaces.router)
+app.include_router(admin.router)
 
 @app.middleware("http")
 async def response_security(request, call_next):

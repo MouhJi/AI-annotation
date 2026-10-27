@@ -3,7 +3,7 @@ import type {InternalAxiosRequestConfig} from "axios";
 export const API_URL=import.meta.env.VITE_API_URL ?? "http://localhost:8000/api";
 export const authApi=axios.create({baseURL:API_URL,withCredentials:true});
 export const api=axios.create({baseURL:API_URL,withCredentials:true});
-export type User={id:string;email:string;full_name:string;status:string;email_verified:boolean;created_at:string};
+export type User={id:string;email:string;full_name:string;status:string;email_verified:boolean;is_platform_admin?:boolean;created_at:string};
 export type SessionPolicy={id:string;server_time:string;idle_expires_at:string;idle_timeout_seconds:number;warning_seconds:number};
 export type AuthResult={access_token:string;user:User;session?:SessionPolicy};
 let sessionPolicy:SessionPolicy|null=null;

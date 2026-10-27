@@ -6,6 +6,11 @@ AnnotateAI is a full-stack platform for preparing computer-vision datasets. Team
 
 ## Features
 
+Platform administration is available at `/admin` with a separate platform-level
+role, live dashboard, user controls and metadata-only workspace/project views.
+An existing verified account must be explicitly granted access through the trusted
+CLI. See [Platform Admin setup](PHASE6_7_PLATFORM_ADMIN.md).
+
 Existing annotations can be corrected directly: move/resize a box, drag polygon
 vertices, or change an object's class, then Save while retaining its ID and
 creator. Hierarchy permissions and soft-delete audit are enforced by the backend.

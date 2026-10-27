@@ -37,7 +37,7 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"], dependencies=[De
 users_router = APIRouter(prefix="/api/users", tags=["account"])
 
 def user_out(user):
-    return {"id": str(user.id), "email": user.email, "full_name": user.full_name, "status": user.status, "email_verified": user.email_verified_at is not None, "created_at": aware(user.created_at)}
+    return {"id": str(user.id), "is_platform_admin": user.is_platform_admin, "email": user.email, "full_name": user.full_name, "status": user.status, "email_verified": user.email_verified_at is not None, "created_at": aware(user.created_at)}
 def set_cookie(response, raw):
     response.set_cookie(COOKIE, raw, httponly=True, secure=settings()["secure"], samesite="lax", path=COOKIE_PATH, max_age=settings()["refresh_days"]*86400)
 def clear_cookie(response):
