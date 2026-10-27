@@ -4,7 +4,7 @@ import {describe,it,expect,vi,afterEach} from 'vitest';
 import AnnotationAttribution,{annotationLabel} from './AnnotationAttribution';
 import AnnotationCanvas from './AnnotationCanvas';
 import type {DraftAnnotation} from '../types';
-vi.mock('./ProtectedImage',()=>({default:(props:any)=><img {...props}/>}));
+vi.mock('./ProtectedImage',()=>({default:({onLoadFailure,...props}:any)=><img {...props}/>}));
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 const item:DraftAnnotation={id:1,class_id:1,class_name:'Car',annotation_type:'bbox',x:0,y:0,width:40,height:30,created_by:{id:'a',full_name:'Nguyễn An'},updated_by:{id:'b',full_name:'Trần Bình'},source:'ai_accepted',created_at:'2026-10-22T10:00:00Z'};
 describe('object attribution',()=>{

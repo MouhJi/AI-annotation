@@ -28,6 +28,25 @@ multi-tab behavior and unsaved annotation handling.
 - **Authentication** — JWT access tokens, rotating refresh cookies, email verification, password reset, SMTP delivery support.
 - **Responsive landing page** — public route at /; the application remains protected at /projects.
 
+### Zoom and pan in the annotation editor
+
+Use **+ / −** or the mouse wheel inside the black workspace to zoom. Wheel zoom
+keeps the image point under the cursor fixed. Hold **Space** and drag with the
+left mouse button to pan; drawing and object editing are suspended during pan.
+
+**Reset 100%** displays one original image pixel per CSS pixel and centers the
+image. **Fit to screen** scales the entire image into the available workspace,
+preserving its aspect ratio; it also adapts when the workspace is resized.
+Large images can extend beyond the clipped workspace at 100%; pan or use Fit
+to inspect the rest. Zoom ranges from 5% to 800%, extending that range when
+necessary to keep Fit available for very large or small images.
+
+Bounding boxes, polygon vertices, and AI suggestions share the image transform.
+Their saved coordinates remain in original image pixels. Zoom and pan alone
+do not mark annotations as changed. A successful **Save** resets to centered
+100% and keeps the saved annotations visible; a failed save keeps the viewport
+and unsaved edits so you can retry. Opening another image starts in Fit mode.
+
 ## Technology
 
 | Layer | Technology |

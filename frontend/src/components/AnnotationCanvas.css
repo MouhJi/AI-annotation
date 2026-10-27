@@ -1,1 +1,17 @@
-.annotation-surface{position:relative;max-width:100%;line-height:0}.annotation-surface>img{display:block;width:100%;height:100%;object-fit:contain;user-select:none}.annotation-surface>svg{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}.annotation-surface svg g{cursor:pointer}.canvas-loader{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.canvas.annotation-canvas {display:flex;flex-direction:column;min-width:0;height:clamp(530px,calc(100dvh - 200px),900px);min-height:0;overflow:hidden;padding:10px;gap:8px}
+.viewport-toolbar {display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none}
+.viewport-toolbar button {padding:6px 10px;min-height:32px}
+.viewport-toolbar output {min-width:65px;text-align:center;color:#e2e8f0;font-variant-numeric:tabular-nums}
+.annotation-viewport {position:relative;flex:1;min-height:0;overflow:hidden;background:#080b10;touch-action:none;user-select:none;outline-offset:-2px}
+.annotation-surface {position:absolute;left:0;top:0;line-height:0;transform-origin:0 0}
+.annotation-surface.is-loading {visibility:hidden}
+.annotation-surface>img {display:block;width:100%;height:100%;max-width:none;user-select:none;pointer-events:none}
+.annotation-surface>svg {position:absolute;inset:0;width:100%;height:100%;overflow:hidden}
+.annotation-viewport.is-select {cursor:default}
+.is-select .annotation-surface svg g[data-annotation-id] {cursor:move}
+.annotation-viewport.is-drawing {cursor:crosshair}
+.annotation-viewport.can-pan,.annotation-viewport.can-pan * {cursor:grab!important}
+.annotation-viewport.is-panning,.annotation-viewport.is-panning * {cursor:grabbing!important}
+.canvas-loading {position:absolute;inset:20px;color:#cbd5e1}
+.annotation-canvas small,.canvas-actions {flex:none}
+@media(max-width:680px){.canvas.annotation-canvas{height:clamp(360px,65dvh,620px)}}
