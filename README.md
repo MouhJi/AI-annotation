@@ -2,7 +2,7 @@
 
 AnnotateAI is a full-stack platform for preparing computer-vision datasets. Teams can organize images, draw bounding boxes or polygons, review YOLO suggestions, collaborate in workspaces, and export YOLO-ready datasets.
 
-![AnnotateAI landing page](docs/phase64-desktop.jpg)
+![Landing page AnnotateAI bằng tiếng Việt](docs/landing-vietnamese-desktop.png)
 
 ## Features
 
@@ -32,7 +32,11 @@ multi-tab behavior and unsaved annotation handling.
 - **Annotation attribution** — show the creator, latest editor, timestamps, source, and stable ID for every saved object.
 - **Dataset workflow** — image/class management, persistent train/validation/test split, and YOLO export.
 - **Authentication** — JWT access tokens, rotating refresh cookies, email verification, password reset, SMTP delivery support.
-- **Responsive landing page** — public route at /; the application remains protected at /projects.
+- **Vietnamese landing page** — public route at / with a real sample editor screenshot,
+  feature/workflow sections, role explanations and FAQ. Styles, scroll reveals and
+  the full-height mobile menu are scoped to the landing. Fonts are hosted locally;
+  auth, workspace, admin and editor routing remain unchanged. Asset provenance is
+  documented in `frontend/public/landing/ASSETS.md`.
 
 ### Zoom and pan in the annotation editor
 
