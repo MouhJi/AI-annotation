@@ -1,4 +1,6 @@
-import {useId,useState} from 'react';
+import {useEffect,useId,useRef,useState} from 'react';
+
+import LandingIcon from './LandingIcon';
 
 type DemoObject = {id:string;label:string;author:string;color:string;box:[number,number,number,number];polygon:string};
 const objects:DemoObject[]=[
@@ -15,7 +17,7 @@ function StreetScene(){
     <path d="M0 26H218M0 118H218M218 64H431M431 59H720M431 151H720" stroke="#c5b7a5" strokeWidth="5"/>
     {[26,92,158,248,311,374,460,526,592,658].map((x,i)=><g key={x}><rect x={x} y={i<3?46:86} width="35" height="51" rx="2" fill="#60777c"/><path d={`M${x+17} ${i<3?46:86}v51`} stroke="#d5d6ca" strokeWidth="3"/></g>)}
     <rect x="240" y="160" width="165" height="70" fill="#537372"/><rect x="235" y="153" width="175" height="15" fill="#73938a"/>
-    <text x="322" y="164" textAnchor="middle" fill="#fff9e9" fontSize="8" letterSpacing="3">THE CORNER STORE</text>
+    <text x="322" y="164" textAnchor="middle" fill="#fff9e9" fontSize="8" letterSpacing="3">CORNER STORE</text>
     <rect x="291" y="176" width="41" height="54" fill="#a9bdb2"/>
     <rect x="601" y="163" width="89" height="67" fill="#6e8687"/>
     <path d="M0 231H720V273H0Z" fill="#c5c6bf"/><path d="M0 271H720V390H0Z" fill="#64747d"/><path d="M0 275H720" stroke="#ecede5" strokeWidth="5"/>
@@ -37,14 +39,53 @@ function StreetScene(){
 }
 
 export default function ProductPreview({initialMode='bbox',compact=false,ai=false}:{initialMode?:'bbox'|'polygon';compact?:boolean;ai?:boolean}){
-  const [mode,setMode]=useState(initialMode);const [selected,setSelected]=useState('car');const id=useId();
-  return <div className={`lp-preview ${compact?'lp-preview-compact':''}`}>
-    <div className="lp-preview-bar"><div className="lp-window-dots" aria-hidden="true"><i/><i/><i/></div><span>city-streets <span className="lp-preview-slash">/</span> street_001.svg</span><span className="lp-demo-tag">Interactive demo</span></div>
-    <div className="lp-preview-toolbar"><span><span className="lp-status-dot"/> Annotation editor</span><div className="lp-mode-switch" aria-label="Demo annotation tool"><button type="button" aria-pressed={mode==='bbox'} onClick={()=>setMode('bbox')}>Bounding Box</button><button type="button" aria-pressed={mode==='polygon'} onClick={()=>setMode('polygon')}>Polygon</button></div><span className="lp-ai-pill">✧ AI-assisted</span></div>
-    <div className="lp-preview-body"><div className="lp-toolrail" aria-hidden="true"><span className="lp-tool-active">↖</span><span>⊡</span><span>⬡</span><span>✧</span><span className="lp-tool-bottom">＋</span></div><div className="lp-demo-canvas"><svg viewBox="0 0 720 390" role="group" aria-labelledby={`${id}-scene-title`}><title id={`${id}-scene-title`}>Illustrated street with a car, person and tree. Colored {mode==='bbox'?'bounding boxes':'segmentation polygons'} show sample annotations.</title><StreetScene/>{objects.map(object=>{
-      const [x,y,w,h]=object.box;const active=object.id===selected;
-      return <g key={object.id} className="lp-demo-object" opacity={active?1:.8} style={{color:object.color}}><title>{object.label} · {object.author} (fictional demo)</title>{mode==='bbox'?<rect x={x} y={y} width={w} height={h} fill="currentColor" fillOpacity={active ? .08 : 0} stroke="currentColor" strokeWidth={active?2.5:1.5} strokeDasharray={ai?'6 4':undefined}/>:<polygon points={object.polygon} fill="currentColor" fillOpacity={active ? .25 : .1} stroke="currentColor" strokeWidth="2"/>}<rect x={x} y={y-23} width={object.id==='car'?153:object.id==='tree'?160:165} height="23" rx="3" fill="currentColor"/><text x={x+7} y={y-8} fill="#102337" fontSize="11" fontWeight="600">{object.label} · {object.author}</text>{active&&mode==='bbox'&&[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].map(([cx,cy],i)=><rect key={i} x={cx-3} y={cy-3} width="6" height="6" fill="#fff" stroke="currentColor"/>)}<rect x={x} y={y-23} width={w} height={h+23} fill="transparent" role="button" aria-label={`Select demo ${object.label}`} tabIndex={0} onClick={()=>setSelected(object.id)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();setSelected(object.id)}}}/></g>;
-    })}</svg><div className="lp-canvas-caption"><span>720 × 390 <span>·</span> {mode==='bbox'?'Object detection':'Instance segmentation'}</span><span>Click an object to explore</span></div></div><aside className="lp-object-panel" aria-label="Demo objects"><div className="lp-object-heading">Objects <span>3</span></div>{objects.map(object=><button key={object.id} type="button" aria-pressed={selected===object.id} onClick={()=>setSelected(object.id)}><i style={{background:object.color}}/><span><b>{object.label}</b><small>{object.author}</small></span><span className="lp-object-check">{selected===object.id?'✓':''}</span></button>)}<div className="lp-demo-details"><span>Created by</span><b>{objects.find(object=>object.id===selected)?.author}</b><span>Source</span><b>{ai?'AI suggestion demo':'Human-refined demo'}</b></div><p>Sample illustration.<br/>Fictional annotators.</p></aside></div>
-    <div className="lp-preview-footer"><span><i/> All changes shown locally</span><span>3 objects <span>·</span> {mode==='bbox'?'Bounding boxes':'Polygons'}</span></div>
+  const [mode,setMode]=useState(initialMode),[selected,setSelected]=useState('car');
+  const [playing,setPlaying]=useState(false),[reduced,setReduced]=useState(false);
+  const [visible,setVisible]=useState(false),[foreground,setForeground]=useState(document.visibilityState!=='hidden');
+  const surface=useRef<HTMLDivElement>(null),id=useId();
+  useEffect(()=>{
+    const media=window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const preference=()=>{const reduce=!!media?.matches;setReduced(reduce);if(reduce)setPlaying(false);};
+    preference();if(!media?.matches)setPlaying(true);
+    media?.addEventListener?.('change',preference);
+    const observer=typeof IntersectionObserver==='undefined'?undefined:new IntersectionObserver(entries=>{
+      setVisible(entries.some(entry=>entry.isIntersecting));
+    },{threshold:.2});
+    if(observer)observer.observe(surface.current!);else setVisible(true);
+    const visibility=()=>setForeground(document.visibilityState!=='hidden');
+    document.addEventListener('visibilitychange',visibility);
+    return()=>{observer?.disconnect();media?.removeEventListener?.('change',preference);document.removeEventListener('visibilitychange',visibility);};
+  },[]);
+  useEffect(()=>{
+    if(!playing||reduced||!visible||!foreground)return;
+    const timer=window.setInterval(()=>setSelected(current=>{
+      const index=objects.findIndex(object=>object.id===current);
+      return objects[(index+1)%objects.length].id;
+    }),3200);
+    return()=>window.clearInterval(timer);
+  },[playing,reduced,visible,foreground]);
+  const choose=(objectId:string)=>{setPlaying(false);setSelected(objectId);};
+  const changeMode=(value:'bbox'|'polygon')=>{setPlaying(false);setMode(value);};
+  const current=objects.find(object=>object.id===selected)!;
+  return <div ref={surface} className={'lp-preview'+(compact?' lp-preview-compact':'')} data-playing={playing&&!reduced} data-motion={reduced?'reduced':'full'}>
+    <div className="lp-preview-bar"><span className="lp-preview-location"><img src="/favicon.svg" width="24" height="24" alt=""/><b>AnnotateAI</b><span aria-hidden="true">/</span><span>street_001.svg</span></span><span className="lp-demo-tag">Interactive preview</span><button type="button" className="lp-preview-motion" disabled={reduced} aria-label={reduced?'Preview uses reduced motion':playing?'Pause preview':'Play preview'} onClick={()=>setPlaying(value=>!value)}><LandingIcon name={playing&&!reduced?'pause':'play'}/><span>{reduced?'Reduced motion':playing?'Pause':'Play preview'}</span></button></div>
+    <div className="lp-preview-toolbar"><span className="lp-editor-label"><span className="lp-status-dot"/>Annotation editor</span><div className="lp-mode-switch" role="group" aria-label="Sample annotation type"><button type="button" aria-pressed={mode==='bbox'} onClick={()=>changeMode('bbox')}><LandingIcon name="bounding-box"/>Bounding box</button><button type="button" aria-pressed={mode==='polygon'} onClick={()=>changeMode('polygon')}><LandingIcon name="polygon"/>Polygon</button></div><span className="lp-preview-class"><LandingIcon name="sparkle"/>YOLO + manual review</span></div>
+    <div className="lp-preview-body"><div className="lp-toolrail" aria-hidden="true"><span className="lp-tool-active"><LandingIcon name="cursor"/></span><span><LandingIcon name="bounding-box"/></span><span><LandingIcon name="polygon"/></span><span><LandingIcon name="sparkle"/></span></div>
+      <div className="lp-demo-canvas"><svg viewBox="0 0 720 390" role="group" aria-labelledby={id+'-scene-title'}><title id={id+'-scene-title'}>Sample street scene with a car, a person and a tree. Select an object to view its bounding box or polygon.</title><StreetScene/>{objects.map((object,index)=>{
+        const [x,y,w,h]=object.box,active=object.id===selected;
+        return <g key={object.id} className="lp-demo-object" data-index={index} data-selected={active} style={{color:object.color}}><title>{object.label+' · '+object.author+' (sample data)'}</title>
+          <g className="lp-demo-geometry" key={mode}>{mode==='bbox'?<rect x={x} y={y} width={w} height={h} fill="currentColor" fillOpacity={active ? 0.12 : 0.03} stroke="currentColor" strokeWidth={active?2.5:1.5} strokeDasharray={ai?'6 4':undefined}/>:<polygon points={object.polygon} fill="currentColor" fillOpacity={active ? 0.28 : 0.12} stroke="currentColor" strokeWidth={active?2.5:1.5}/>}
+            <rect x={x} y={y-24} width={object.id==='person'?168:128} height="24" rx="4" fill="currentColor"/><text x={x+8} y={y-8} fill="#102337" fontSize="12" fontWeight="600">{object.label+' · '+(active?'Selected':'Sample label')}</text>
+            {active&&mode==='bbox'&&[[x,y],[x+w,y],[x,y+h],[x+w,y+h]].map(([cx,cy],i)=><rect key={i} x={cx-3} y={cy-3} width="6" height="6" fill="white" stroke="currentColor"/>)}
+          </g>
+          <rect x={x} y={y-24} width={w} height={h+24} fill="transparent" role="button" aria-label={'Select sample '+object.label} aria-pressed={active} tabIndex={0} onClick={()=>choose(object.id)} onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();choose(object.id);}}}/>
+        </g>;
+      })}</svg><div className="lp-canvas-caption"><span>{mode==='bbox'?'Bounding box':'Instance segmentation'}</span><span>Select an object to view its label</span></div></div>
+      <aside className="lp-object-panel" aria-label="Sample objects"><div className="lp-object-heading"><b>Objects</b><span>{objects.length}</span></div>{objects.map(object=><button key={object.id} type="button" aria-pressed={selected===object.id} onClick={()=>choose(object.id)}><span className={'lp-object-dot lp-dot-'+object.id}/><span><b>{object.label}</b><small>{object.author}</small></span>{selected===object.id&&<LandingIcon name="check"/>}</button>)}
+        <div className="lp-demo-details" key={selected}><span>Viewing</span><b>{current.label}</b><span>Sample label creator</span><b>{current.author}</b><span>Label type</span><b>{mode==='bbox'?'Bounding box':'Polygon'}</b></div>
+        <p>Image and annotator names are sample data.</p>
+      </aside>
+    </div>
+    <div className="lp-preview-footer"><span><LandingIcon name="check"/>Select an object or switch annotation types to explore</span><span>Local preview. No AI inference runs here.</span></div>
   </div>;
 }
