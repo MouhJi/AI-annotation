@@ -36,11 +36,11 @@ it('retains viewport/drafts on failed save and resets only after successful API 
   const pointer=(x:number,y:number)=>({clientX:70+ox+x*scale,clientY:120+oy+y*scale,button:0});
   fireEvent.pointerDown(result.container.querySelector('[data-annotation-id="9"]')!,pointer(125,115));fireEvent.pointerMove(region,pointer(132.5,126.25));fireEvent.pointerUp(region);
   vi.mocked(api.put).mockRejectedValueOnce({response:{data:{detail:'Version conflict'}}});
-  fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByText('Version conflict');
+  fireEvent.click(screen.getByRole('button',{name:'Save draft'}));await screen.findByText('Version conflict');
   expect(surface.style.transform).toBe(before);expect(result.container.querySelector('[data-annotation-id="9"]>rect')?.getAttribute('x')).toBe('127.5');
   let finish!:(value:any)=>void;
   vi.mocked(api.put).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
-  fireEvent.click(screen.getByRole('button',{name:'Save'}));await screen.findByRole('button',{name:'Saving…'});
+  fireEvent.click(screen.getByRole('button',{name:'Save draft'}));await screen.findByRole('button',{name:'Saving…'});
   expect(surface.style.transform).toBe(before);
   expect(api.put).toHaveBeenLastCalledWith('/images/1/annotations',expect.objectContaining({expected_versions:{9:3},items:[expect.objectContaining({id:9,x:127.5,y:121.25,width:80,height:70})]}));
   stored=[{...original,x:127.5,y:121.25,version:4,updated_by:{id:'b',full_name:'Editor'}}];

@@ -8,6 +8,7 @@ from ..schemas.prediction import AutoLabelRequest, AutoLabelResponse, BatchAutoL
 from ..services.annotation_service import validate_payload
 from ..services.auto_label_service import accept_prediction, prediction_out, reject_prediction, run_auto_label, run_auto_segment, update_prediction
 from ..services.image_service import require_project
+from ..services.quality_service import lock_image, require_editable
 
 router = APIRouter(prefix="/api", tags=["auto-labeling"])
 
@@ -82,10 +83,10 @@ def get_predictions(image_id: int, db: Session = Depends(get_db)):
     return [prediction_out(item) for item in db.scalars(select(AutoLabelPrediction).where(AutoLabelPrediction.image_id == image_id).order_by(AutoLabelPrediction.id))]
 
 @router.put("/predictions/{prediction_id}", response_model=PredictionOut)
-def edit_prediction(prediction_id: int, payload: PredictionUpdate, db: Session = Depends(get_db)):
+def edit_prediction(prediction_id: int, payload: PredictionUpdate, db: Session = Depends(get_db), user=Depends(get_active_user)):
     item = db.get(AutoLabelPrediction, prediction_id)
     if not item: raise HTTPException(404, "Prediction not found")
-    return prediction_out(update_prediction(db, item, payload))
+    return prediction_out(update_prediction(db, item, payload, user.id))
 
 @router.post("/predictions/{prediction_id}/accept")
 def accept(prediction_id: int, db: Session = Depends(get_db), user=Depends(get_active_user)):
@@ -102,6 +103,7 @@ def reject(prediction_id: int, db: Session = Depends(get_db)):
 
 @router.post("/images/{image_id}/predictions/accept-all")
 def accept_all(image_id: int, db: Session = Depends(get_db), user=Depends(get_active_user)):
+    require_editable(lock_image(db,image_id))
     if not db.get(Image, image_id): raise HTTPException(404, "Image not found")
     accepted = failed = 0
     items = list(db.scalars(select(AutoLabelPrediction).where(AutoLabelPrediction.image_id == image_id, AutoLabelPrediction.status == "PENDING")))

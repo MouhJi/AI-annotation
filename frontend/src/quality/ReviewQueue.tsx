@@ -1,0 +1,14 @@
+import {useEffect,useRef,useState} from 'react';
+import {Link} from 'react-router-dom';
+import {api} from '../services/api';
+import type {ImageItem,ReviewState} from '../types';
+import {ReviewBadge,StateOptions,SplitOptions,errorMessage} from './shared';
+
+export default function ReviewQueue({projectId}:{projectId:string}){
+  const [state,setState]=useState<ReviewState>('pending_review'),[split,setSplit]=useState(''),[offset,setOffset]=useState(0),[data,setData]=useState<{total:number;items:ImageItem[]}>(),[loading,setLoading]=useState(true),[error,setError]=useState(''),[reload,setReload]=useState(0);
+  const generation=useRef(0);
+  useEffect(()=>{const token=++generation.current;setLoading(true);setError('');void api.get(`/projects/${projectId}/review-queue`,{params:{state,split:split||undefined,offset,limit:50}}).then(response=>{if(token===generation.current)setData(response.data);}).catch(e=>{if(token===generation.current)setError(errorMessage(e,'Unable to load the review queue.'));}).finally(()=>{if(token===generation.current)setLoading(false);});return()=>{generation.current++;};},[projectId,state,split,offset,reload]);
+  return <section className="surface quality-project"><h2>Review queue</h2><p>Open an image to inspect labels, discussions and history before making a decision.</p><div className="quality-filters"><label>Review status<select value={state} onChange={event=>{setState(event.target.value as ReviewState);setOffset(0);}}><StateOptions/></select></label><label>Dataset split<select value={split} onChange={event=>{setSplit(event.target.value);setOffset(0);}}><SplitOptions/></select></label><button className="secondary" disabled={loading} onClick={()=>setReload(value=>value+1)}>Refresh queue</button></div>
+    {loading?<p role="status">Loading review queue…</p>:error?<p className="error" role="alert">{error}</p>:data&&!data.items.length?<div className="empty-state"><h3>No images in this queue</h3><p>Change the status or dataset split to see other images.</p></div>:<><p>{data?.total} images match this scope.</p><div className="table-scroll"><table className="team-table"><thead><tr><th>Image</th><th>Status</th><th>Revision</th><th>Objects</th><th>Dataset split</th></tr></thead><tbody>{data?.items.map(image=><tr key={image.id}><td><Link to={`/projects/${projectId}/images/${image.id}`}>{image.filename}</Link></td><td><ReviewBadge state={image.review_state}/></td><td>{image.revision}</td><td>{image.annotation_count}</td><td>{image.split??'Unassigned'}</td></tr>)}</tbody></table></div><div className="quality-actions"><button className="secondary" disabled={offset===0} onClick={()=>setOffset(value=>Math.max(0,value-50))}>Previous page</button><button className="secondary" disabled={offset+50>=(data?.total??0)} onClick={()=>setOffset(value=>value+50)}>Next page</button></div></>}
+  </section>;
+}

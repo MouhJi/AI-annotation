@@ -31,6 +31,12 @@ multi-tab behavior and unsaved annotation handling.
 - **Team workspaces** — verified-email invitations and Owner, Admin, Annotator, Reviewer, and Viewer roles.
 - **Annotation attribution** — show the creator, latest editor, timestamps, source, and stable ID for every saved object.
 - **Dataset workflow** — image/class management, persistent train/validation/test split, and YOLO export.
+- **Quality control** — save drafts, submit immutable image revisions, request changes,
+  approve independently, and optionally require approval before YOLO export.
+- **Review discussions and metrics** — image/object threads with replies and resolution,
+  a review queue, separate quality counters and estimated active annotation time.
+  See the [quality workflow guide](PHASE7_QUALITY.md) for permissions, formulas,
+  migration and acceptance steps with an Annotator and two Reviewers.
 - **Authentication** — JWT access tokens, rotating refresh cookies, email verification, password reset, SMTP delivery support.
 - **English landing page** — public route at / with an interactive annotation
   illustration, a real sample editor screenshot, feature/workflow sections, a role
@@ -58,6 +64,14 @@ Their saved coordinates remain in original image pixels. Zoom and pan alone
 do not mark annotations as changed. A successful **Save** resets to centered
 100% and keeps the saved annotations visible; a failed save keeps the viewport
 and unsaved edits so you can retry. Opening another image starts in Fit mode.
+
+Use **Save draft** to persist without submitting. **Image review → Submit for review**
+saves and submits atomically, then locks editing. Confirm an empty image explicitly
+before submitting it as a negative example. A reviewer can request changes with a
+reason; approved images must be reopened before editing. Contributors cannot approve
+their own revision, including administrators. Export review gating is off by default
+for existing projects. Enable it in **Dataset Export**, where scope/eligibility counts
+are shown before download. Comments do not change revisions or block approval.
 
 ## Technology
 
@@ -391,6 +405,7 @@ If Git is already initialized, skip git init. Before git add ., check that git s
 - [Workspace collaboration and RBAC](PHASE6_WORKSPACES.md)
 - [Real email delivery](PHASE6_2_EMAIL.md)
 - [Annotation attribution](PHASE6_3_ATTRIBUTION.md)
+- [Annotation quality, review, discussions and productivity](PHASE7_QUALITY.md)
 - [Landing page implementation](PHASE6_4_LANDING.md)
 
 ## Known limitations

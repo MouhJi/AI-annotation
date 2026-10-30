@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from .auth_config import settings
 from .auth_dependencies import get_active_user, require_resource_access, owned_project
 from . import models
-from .routers import projects, classes, images, annotations, dataset, auto_label, auth, workspaces, admin
+from .routers import projects, classes, images, annotations, dataset, auto_label, auth, workspaces, admin, quality
 
 storage=Path(os.getenv("STORAGE_PATH","./storage")); storage.mkdir(parents=True,exist_ok=True)
 (storage / "models").mkdir(exist_ok=True)
@@ -17,7 +17,7 @@ from .services.session_idle import policy
 policy()
 app=FastAPI(title="Annotation Platform API",version="0.1.0")
 app.add_middleware(CORSMiddleware,allow_origins=config["origins"],allow_credentials=True,allow_methods=["GET","POST","PUT","PATCH","DELETE","OPTIONS"],allow_headers=["Authorization","Content-Type"],expose_headers=["Content-Disposition"])
-for router in (projects.router, classes.router, images.router, annotations.router, dataset.router, auto_label.router):
+for router in (projects.router, classes.router, images.router, annotations.router, dataset.router, auto_label.router, quality.router):
     app.include_router(router, dependencies=[Depends(require_resource_access)])
 app.include_router(auth.router); app.include_router(auth.users_router)
 app.include_router(workspaces.router)

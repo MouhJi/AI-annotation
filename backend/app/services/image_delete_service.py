@@ -9,6 +9,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from ..models import Annotation, AutoLabelPrediction, Image
 from .image_service import STORAGE_PATH
+from .quality_retention import detach_image_quality
 
 
 def _safe_path(image: Image) -> Path:
@@ -51,6 +52,7 @@ def delete_images(db: Session, images: list[Image]) -> dict:
             else:
                 staged.append(result)
         # Predictions reference annotations, so remove them before annotations/image rows.
+        detach_image_quality(db, image_ids)
         db.execute(delete(AutoLabelPrediction).where(AutoLabelPrediction.image_id.in_(image_ids)))
         db.execute(delete(Annotation).where(Annotation.image_id.in_(image_ids)))
         db.execute(delete(Image).where(Image.id.in_(image_ids)))

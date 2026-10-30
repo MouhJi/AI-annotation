@@ -12,6 +12,6 @@ export default function AnnotationAttribution({annotation}: {annotation: DraftAn
     <p>Created at: {annotation.isNew ? "Not saved yet" : date(annotation.created_at)}</p>
     <p>Last edited by: {annotation.isNew ? "Unsaved" : annotation.updated_by?.full_name || "Unknown annotator"}</p>
     <p>Last edited at: {annotation.isNew ? "Not saved yet" : date(annotation.updated_at)}</p>
-    <p>Source: {annotation.source === "ai_accepted" ? "AI-assisted (YOLO)" : annotation.source === "legacy" ? "Legacy annotation" : "Manual"}</p>
+    <p>Source: {annotation.source === "ai_accepted" ? "AI (YOLO)" : annotation.source === "ai_edited" ? "AI with human edits" : annotation.source === "manual" ? "Manual" : "Unknown"}</p>
   </section>;
 }

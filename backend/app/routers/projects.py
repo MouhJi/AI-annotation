@@ -13,7 +13,7 @@ from ..services.project_delete_service import delete_project
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 def serialize(p: Project, db: Session, user: User):
-    return ProjectOut(id=p.id, name=p.name, description=p.description, annotation_mode=p.annotation_mode, created_at=p.created_at, updated_at=p.updated_at, workspace_id=p.workspace_id, permissions=permissions(membership(db,p.workspace_id,user).role),
+    return ProjectOut(id=p.id, name=p.name, description=p.description, annotation_mode=p.annotation_mode, require_review=p.require_review, created_at=p.created_at, updated_at=p.updated_at, workspace_id=p.workspace_id, permissions=permissions(membership(db,p.workspace_id,user).role),
       image_count=db.scalar(select(func.count(Image.id)).where(Image.project_id == p.id)) or 0,
       class_count=db.scalar(select(func.count(LabelClass.id)).where(LabelClass.project_id == p.id)) or 0)
 @router.post("", response_model=ProjectOut, status_code=201)

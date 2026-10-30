@@ -1,6 +1,6 @@
-export type Project={id:number;name:string;description?:string;annotation_mode:"object_detection"|"instance_segmentation";image_count:number;class_count:number;workspace_id:string;permissions:string[]};
+export type Project={id:number;name:string;description?:string;annotation_mode:"object_detection"|"instance_segmentation";image_count:number;class_count:number;workspace_id:string;permissions:string[];require_review?:boolean};
 export type LabelClass={id:number;project_id:number;name:string};
-export type ImageItem={id:number;filename:string;width:number;height:number;annotation_count:number;image_url?:string;split?:"train"|"val"|"test"};
+export type ImageItem={id:number;filename:string;width:number;height:number;annotation_count:number;image_url?:string;split?:"train"|"val"|"test";review_state?:ReviewState;revision?:number;review_version?:number};
 export type ImageDetail=ImageItem & {project_id:number;image_url:string};
 export type Point=[number,number];
 export type Annotator={id:string;full_name:string};
@@ -9,3 +9,7 @@ export type DraftAnnotation=Omit<Annotation,"id"|"image_id"|"class_name"> & {id:
 export type SplitSummary={train:number;val:number;test:number;total:number;configured:boolean};
 export type Prediction={id:number;image_id:number;model_class_id:number;model_class_name:string;mapped_class_id:number|null;mapped_class_name:string|null;prediction_type:"bbox"|"polygon";x:number;y:number;width:number;height:number;points?:Point[]|null;confidence:number;status:"PENDING"|"ACCEPTED"|"REJECTED"};
 export type ClassMapping={id:number;model_class_id:number;model_class_name:string;class_id:number;class_name:string};
+export type ReviewState="not_started"|"in_progress"|"pending_review"|"changes_requested"|"approved";
+export type ReviewEvent={id:number;revision:number;action:string;actor:Annotator|null;submitter:Annotator|null;submission:number|null;reason:string|null;error_category:string|null;created_at:string};
+export type ReviewDetail={state:ReviewState;revision:number;review_version:number;approved_revision:number|null;negative_confirmed:boolean;snapshot_id:number|null;contributors:Annotator[];can_approve:boolean;can_withdraw:boolean;independent_review_required:boolean;open_threads:number;idle_seconds:number;history:ReviewEvent[]};
+export type DiscussionThread={id:number;object_id:number|null;object_deleted:boolean;resolved:boolean;version:number;resolved_by:Annotator|null;resolved_at:string|null;can_resolve:boolean;comments:{id:number;author:Annotator|null;body:string;created_at:string}[]};

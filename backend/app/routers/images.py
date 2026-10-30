@@ -8,16 +8,21 @@ from ..schemas.image import BulkImageDelete, ImageDetail, ImageOut
 from ..services.image_delete_service import delete_images
 from ..services.image_service import save_upload, require_project, STORAGE_PATH
 router=APIRouter(prefix="/api",tags=["images"])
-def serialize(i:Image,db:Session):
+def serialize(i:Image,db:Session,count=None):
     relative=Path(i.filepath).resolve().relative_to(STORAGE_PATH.resolve())
-    return ImageOut(id=i.id,filename=i.filename,width=i.width,height=i.height,annotation_count=db.scalar(select(func.count(Annotation.id)).where(Annotation.image_id==i.id)) or 0,image_url=f"/storage/{relative.as_posix()}",split=i.split)
+    return ImageOut(id=i.id,filename=i.filename,width=i.width,height=i.height,annotation_count=(db.scalar(select(func.count(Annotation.id)).where(Annotation.image_id==i.id)) or 0) if count is None else count,image_url=f"/storage/{relative.as_posix()}",split=i.split,review_state=i.review_state,revision=i.revision,review_version=i.review_version)
 @router.post("/projects/{project_id}/images",response_model=list[ImageOut],status_code=201)
 async def upload(project_id:int,files:list[UploadFile]=File(...),db:Session=Depends(get_db)):
     if not files: raise HTTPException(400,"At least one image is required")
     return [serialize(await save_upload(db,project_id,f),db) for f in files]
 @router.get("/projects/{project_id}/images",response_model=list[ImageOut])
-def list_images(project_id:int,db:Session=Depends(get_db)):
-    require_project(db,project_id); return [serialize(i,db) for i in db.scalars(select(Image).where(Image.project_id==project_id).order_by(Image.created_at))]
+def list_images(project_id:int,review_state:str|None=None,split:str|None=None,db:Session=Depends(get_db)):
+    require_project(db,project_id)
+    query=select(Image).where(Image.project_id==project_id).order_by(Image.created_at)
+    if review_state: query=query.where(Image.review_state==review_state)
+    if split: query=query.where(Image.split==split)
+    counts=dict(db.execute(select(Annotation.image_id,func.count(Annotation.id)).join(Image).where(Image.project_id==project_id).group_by(Annotation.image_id)).all())
+    return [serialize(i,db,counts.get(i.id,0)) for i in db.scalars(query)]
 @router.get("/images/{image_id}",response_model=ImageDetail)
 def get_image(image_id:int,db:Session=Depends(get_db)):
     i=db.get(Image,image_id)

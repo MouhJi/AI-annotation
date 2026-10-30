@@ -35,6 +35,7 @@ class BatchAnnotation(AnnotationBase):
 class AnnotationBatch(BaseModel):
     items: list[BatchAnnotation]
     expected_versions: dict[int, int]
+    expected_revision: int | None = Field(default=None, ge=0)
 
 class AnnotationOut(AnnotationBase):
     id: int; image_id: int; class_name: str

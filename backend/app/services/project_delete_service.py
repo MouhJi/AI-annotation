@@ -10,6 +10,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from ..models import Annotation, AutoLabelPrediction, Image, LabelClass, Project, ProjectClassMapping
 from .image_service import STORAGE_PATH
+from .quality_retention import detach_image_quality
 
 
 def _project_folder(project_id: int) -> Path:
@@ -48,6 +49,7 @@ def delete_projects(db: Session, projects: list[Project], before_commit=None) ->
                 trash.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(folder, trash); staged.append((folder, trash))
         # Explicit order keeps PostgreSQL foreign keys valid even without DB cascades.
+        detach_image_quality(db, image_ids)
         db.execute(delete(AutoLabelPrediction).where(AutoLabelPrediction.image_id.in_(image_ids)))
         db.execute(delete(Annotation).where(Annotation.image_id.in_(image_ids)))
         db.execute(delete(ProjectClassMapping).where(ProjectClassMapping.project_id.in_(project_ids)))

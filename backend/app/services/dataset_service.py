@@ -7,12 +7,14 @@ import tempfile
 import zipfile
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from ..models import Annotation, Image, LabelClass, Project
 from ..schemas.dataset import SplitConfig, SplitSummary
 from .polygon_service import validate_polygon
+from .export_scope import export_selection
 
 SPLITS = ("train", "val", "test")
 
@@ -35,7 +37,7 @@ def _counts(total: int, config: SplitConfig) -> dict[str, int]:
             counts["train"] += 1
     return counts
 
-def assign_splits(db: Session, project_id: int, config: SplitConfig) -> SplitSummary:
+def assign_splits(db: Session, project_id: int, config: SplitConfig, commit=True) -> SplitSummary:
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
@@ -46,7 +48,8 @@ def assign_splits(db: Session, project_id: int, config: SplitConfig) -> SplitSum
         for image in images[cursor:cursor + counts[split]]:
             image.split = split
         cursor += counts[split]
-    db.commit()
+    if commit: db.commit()
+    else: db.flush()
     return split_summary(images)
 
 def _safe_dataset_name(name: str) -> str:
@@ -68,17 +71,17 @@ def yolo_polygon_line(annotation: Annotation, image: Image, class_index: int) ->
     except (ValueError, TypeError, json.JSONDecodeError): raise HTTPException(400, f"Invalid annotation {annotation.id}: malformed polygon geometry")
     return f"{class_index} " + " ".join(f"{coordinate:.6f}" for point in points for coordinate in (point[0] / image.width, point[1] / image.height))
 
-def export_yolo_zip(db: Session, project_id: int) -> tuple[bytes, str]:
+def export_yolo_zip(db: Session, project_id: int, split=None, image_ids=None) -> tuple[bytes, str]:
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, "Project not found")
-    statement = select(Image).where(Image.project_id == project_id).options(selectinload(Image.annotations).selectinload(Annotation.label_class)).order_by(Image.id)
-    images = list(db.scalars(statement))
+    images, snapshots, preview = export_selection(db, project, split, image_ids)
     if not images:
-        raise HTTPException(400, "Project has no images to export")
+        raise HTTPException(400, "No images are eligible for export in this scope. Approve the current revisions or change the export scope." if project.require_review else "Project has no images to export")
+    # Approved exports use immutable snapshots. Ungated exports retain the existing live behavior.
+    live = {} if project.require_review else {row.id: row for row in db.scalars(select(Image).where(Image.id.in_([image.id for image in images])).options(selectinload(Image.annotations).selectinload(Annotation.label_class)))}
     if any(image.split not in SPLITS for image in images):
-        assign_splits(db, project_id, SplitConfig())
-        images = list(db.scalars(statement))
+        assign_splits(db, project_id, SplitConfig(), commit=False)
     classes = list(db.scalars(select(LabelClass).where(LabelClass.project_id == project_id).order_by(LabelClass.id)))
     if not classes:
         raise HTTPException(400, "Project must have at least one class before export")
@@ -98,8 +101,9 @@ def export_yolo_zip(db: Session, project_id: int) -> tuple[bytes, str]:
             target_stem = f"{image.id}_{Path(image.filename).stem}"
             shutil.copy2(source, workspace / "images" / image.split / f"{target_stem}{source.suffix.lower()}")
             lines: list[str] = []
-            for annotation in image.annotations:
-                if annotation.class_id not in class_ids or annotation.label_class.project_id != project_id:
+            annotations = [SimpleNamespace(**item) for item in snapshots[image.id].objects] if project.require_review else live[image.id].annotations
+            for annotation in annotations:
+                if annotation.class_id not in class_ids:
                     raise HTTPException(400, f"Invalid annotation {annotation.id}: class does not belong to project")
                 if project.annotation_mode == "instance_segmentation":
                     lines.append(yolo_polygon_line(annotation, image, class_ids[annotation.class_id]))
@@ -111,4 +115,5 @@ def export_yolo_zip(db: Session, project_id: int) -> tuple[bytes, str]:
             for file_path in workspace.rglob("*"):
                 if file_path.is_file():
                     archive.write(file_path, file_path.relative_to(workspace.parent).as_posix())
+        db.commit()
         return buffer.getvalue(), f"{root}-yolo.zip"

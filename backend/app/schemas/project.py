@@ -9,6 +9,7 @@ class ProjectCreate(BaseModel):
     annotation_mode: Literal["object_detection", "instance_segmentation"] = "object_detection"
     workspace_id: UUID | None = None
 class ProjectOut(ProjectCreate):
+    require_review: bool = False
     id: int
     created_at: datetime
     updated_at: datetime
