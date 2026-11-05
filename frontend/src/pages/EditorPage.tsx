@@ -11,6 +11,7 @@ import ReviewPanel from '../quality/ReviewPanel';
 import CommentsPanel from '../quality/CommentsPanel';
 import {ReviewBadge,errorMessage} from '../quality/shared';
 import {useAnnotationActivity} from '../quality/useAnnotationActivity';
+import './EditorPage.css';
 
 export default function EditorPage() {
   const {current}=useWorkspace();
@@ -65,6 +66,17 @@ export default function EditorPage() {
       {review&&<div hidden={panel!=='review'}><ReviewPanel key={image.id} imageId={image.id} review={review} permissions={project.permissions} busy={busy} dirty={annotations.dirty} empty={annotations.items.length===0} onSubmit={submit} onBusy={setReviewBusy} onChanged={async next=>{setReview(next);setMode('select');await load();}}/></div>}
       {can('comment.read')&&<div hidden={panel!=='comments'}><CommentsPanel key={image.id} imageId={image.id} selected={selected} canComment={can('comment.create')} onSelectObject={selectObject} onChanged={()=>void refreshReview()}/></div>}
     </aside></div>
-    <footer>{!readOnly&&<><button disabled={busy} className={mode==='select'?'active':''} onClick={()=>setMode('select')}>Select</button>{segmentation?<button disabled={busy} className={mode==='polygon'?'active':''} onClick={()=>setMode('polygon')}>Polygon</button>:<button disabled={busy} className={mode==='draw'?'active':''} onClick={()=>setMode('draw')}>Bounding Box</button>}<button disabled={busy||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_delete))} onClick={()=>{if(selected){annotations.remove(selected);setSelected(undefined);}}}>Delete</button><button className="danger" disabled={busy||initial.some(a=>!a.can_delete)} onClick={()=>void deleteAll()}>Delete All Labels</button></>}<span/><button disabled={busy||index<=0} onClick={()=>go(index-1)}>‹ Previous</button><button disabled={busy||index===allImages.length-1} onClick={()=>go(index+1)}>Next ›</button></footer>
+    <footer className="editor-footer">
+      {!readOnly&&<div className="editor-tools">
+        <button disabled={busy} className={mode==='select'?'active':''} onClick={()=>setMode('select')}>Select</button>
+        {segmentation?<button disabled={busy} className={mode==='polygon'?'active':''} onClick={()=>setMode('polygon')}>Polygon</button>:<button disabled={busy} className={mode==='draw'?'active':''} onClick={()=>setMode('draw')}>Bounding Box</button>}
+        <button disabled={busy||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_delete))} onClick={()=>{if(selected){annotations.remove(selected);setSelected(undefined);}}}>Delete</button>
+        <button className="danger" disabled={busy||initial.some(a=>!a.can_delete)} onClick={()=>void deleteAll()}>Delete All Labels</button>
+      </div>}
+      <div className="editor-navigation">
+        <button disabled={busy||index<=0} onClick={()=>go(index-1)}>‹ Previous</button>
+        <button disabled={busy||index===allImages.length-1} onClick={()=>go(index+1)}>Next ›</button>
+      </div>
+    </footer>
   </main>;
 }

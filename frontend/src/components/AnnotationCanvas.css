@@ -1,4 +1,4 @@
-.canvas.annotation-canvas {display:flex;flex-direction:column;min-width:0;height:clamp(530px,calc(100dvh - 200px),900px);min-height:0;overflow:hidden;padding:10px;gap:8px}
+.canvas.annotation-canvas {display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden;padding:10px;gap:8px}
 .viewport-toolbar {display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:none}
 .viewport-toolbar button {padding:6px 10px;min-height:32px}
 .viewport-toolbar output {min-width:65px;text-align:center;color:#e2e8f0;font-variant-numeric:tabular-nums}
@@ -14,4 +14,3 @@
 .annotation-viewport.is-panning,.annotation-viewport.is-panning * {cursor:grabbing!important}
 .canvas-loading {position:absolute;inset:20px;color:#cbd5e1}
 .annotation-canvas small,.canvas-actions {flex:none}
-@media(max-width:680px){.canvas.annotation-canvas{height:clamp(360px,65dvh,620px)}}

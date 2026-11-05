@@ -1,0 +1,109 @@
+/* Header, feedback and footer keep their natural height; only the workspace shrinks. */
+.editor {
+  display: flex;
+  flex-direction: column;
+  max-width: none;
+  padding: 16px;
+  background: #f8fafc;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.editor > * {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.editor > header {
+  flex-wrap: wrap;
+}
+
+.editor > header h2 {
+  min-width: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.editor > .quality-save-status {
+  margin: 0;
+}
+
+.editor > .workspace {
+  flex: 1 1 0;
+  min-height: 0;
+  grid-template-columns: 240px minmax(0, 1fr) 304px;
+  grid-template-rows: minmax(0, 1fr);
+  margin: 0;
+  overflow: hidden;
+}
+
+.editor > .workspace > aside {
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  overflow-wrap: anywhere;
+}
+
+.editor-footer,
+.editor-tools,
+.editor-navigation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.editor-footer {
+  justify-content: space-between;
+}
+
+.editor-navigation {
+  margin-left: auto;
+}
+
+@media (max-width: 1200px) {
+  .editor > .workspace {
+    grid-template-columns: 200px minmax(0, 1fr) 256px;
+  }
+}
+
+/* Keep the canvas above two independently scrolling panels on narrow windows. */
+@media (max-width: 900px) {
+  .editor > .workspace {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .editor > .workspace > .annotation-canvas {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .editor > .workspace > aside {
+    grid-row: 2;
+  }
+}
+
+/* Short landscape windows give the canvas the full workspace height. */
+@media (max-width: 900px) and (max-height: 600px) {
+  .editor > .workspace {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor > .workspace > .annotation-canvas {
+    grid-column: 1;
+    grid-row: 1 / -1;
+  }
+
+  .editor > .workspace > aside {
+    grid-column: 2;
+    grid-row: auto;
+  }
+}
