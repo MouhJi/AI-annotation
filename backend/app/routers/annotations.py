@@ -11,6 +11,7 @@ from ..models import Annotation, AutoLabelPrediction, Image
 from ..schemas.annotation import AnnotationCreate, AnnotationOut, AnnotationUpdate
 import json
 from ..services.annotation_service import annotation_values, validate_payload
+from ..services.auto_label_service import stage_draft_prediction
 from ..services.annotation_permissions import role_map, can_correct, require_correction, snapshot, record_change, soft_delete
 from ..services.quality_service import LOCKED, lock_image, require_editable, capture, content_changed as image_content_changed
 router=APIRouter(prefix="/api",tags=["annotations"])
@@ -97,13 +98,20 @@ def apply_batch(image_id, payload, db, user):
     removed = set(existing) - set(ids)
     if removed: require_project_permission(db, image.project_id, user, "annotation.delete")
     if any(a.id is None for a in payload.items): require_project_permission(db, image.project_id, user, "annotation.create")
+    prediction_ids = [a.prediction_id for a in payload.items if a.prediction_id is not None]
+    if len(prediction_ids) != len(set(prediction_ids)): raise HTTPException(400, "Duplicate prediction IDs")
+    if prediction_ids: require_project_permission(db, image.project_id, user, "prediction.review")
     roles=role_map(db,image.project.workspace_id)
     for key in removed: require_correction(existing[key],user,roles)
-    # Validate the entire request before changing any row; one commit for the image.
-    values = []
+    # Validate/stage the whole request in one transaction; errors roll back AI acceptance too.
+    values = []; contributors = []
     for item in payload.items:
         expected_type = "polygon" if image.project.annotation_mode == "instance_segmentation" else "bbox"
         if item.annotation_type != expected_type: raise HTTPException(400, "Geometry does not match project mode")
+        if item.prediction_id is not None:
+            contributors.extend(stage_draft_prediction(db, image, item, user.id))
+            values.append(None)
+            continue
         validate_payload(db, image, item)
         content=annotation_values(image,item)
         if item.id is not None and content_changed(existing[item.id],content): require_correction(existing[item.id],user,roles)
@@ -111,6 +119,7 @@ def apply_batch(image_id, payload, db, user):
     changed = bool(removed) or any(item.id is None or content_changed(existing[item.id],content) for item,content in zip(payload.items,values))
     if changed: capture(db,image)
     for item, content in zip(payload.items, values):
+        if item.prediction_id is not None: continue
         if item.id is None:
             db.add(Annotation(image_id=image_id, created_by=user.id, updated_by=user.id, **content))
         else:
@@ -124,7 +133,7 @@ def apply_batch(image_id, payload, db, user):
     if removed:
         db.execute(sql_update(AutoLabelPrediction).where(AutoLabelPrediction.annotation_id.in_(removed)).values(annotation_id=None, status="REJECTED"))
         for key in removed: soft_delete(db,existing[key],user)
-    if changed: image_content_changed(db,image,user.id)
+    if changed: image_content_changed(db,image,user.id,contributors)
     return image
 @router.delete("/images/{image_id}/annotations")
 def delete_all(image_id:int,payload:dict,db:Session=Depends(get_db),user=Depends(get_active_user)):

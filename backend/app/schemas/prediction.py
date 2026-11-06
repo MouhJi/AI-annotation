@@ -19,6 +19,7 @@ class PredictionUpdate(BaseModel):
         return self
 
 class PredictionOut(BaseModel):
+    draft_token: str
     id: int; image_id: int; model_class_id: int; model_class_name: str
     mapped_class_id: int | None; mapped_class_name: str | None = None
     prediction_type: str = "bbox"

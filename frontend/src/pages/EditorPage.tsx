@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {useWorkspace} from "../workspaces/WorkspaceProvider";
-import AnnotationCanvas from "../components/AnnotationCanvas";
+import AnnotationCanvas, {type AnnotationCanvasHandle} from "../components/AnnotationCanvas";
 import AnnotationAttribution, {annotationLabel} from "../components/AnnotationAttribution";
 import AutoLabelPanel from "../components/AutoLabelPanel";
 import { useAnnotations } from "../hooks/useAnnotations";
@@ -22,9 +22,23 @@ export default function EditorPage() {
   const [resetViewportKey, setResetViewportKey] = useState(0);
   const [review,setReview]=useState<ReviewDetail>(),[reviewBusy,setReviewBusy]=useState(false),[panel,setPanel]=useState<'objects'|'review'|'comments'>('objects'),[message,setMessage]=useState('');
   const loadGeneration = useRef(0);
-  const annotations = useAnnotations(Number(imageId), initial);
-  const busy=annotations.saving||reviewBusy;
   const workflowLocked=review?.state==='pending_review'||review?.state==='approved';
+  const can=(permission:string)=>!!project?.permissions.includes(permission);
+  const readOnly=!can('annotation.update')||workflowLocked;
+  const annotations = useAnnotations(Number(imageId), initial,{editable:!readOnly,canCreate:can('annotation.create'),canUpdate:can('annotation.update'),canDelete:can('annotation.delete'),canReviewPredictions:can('prediction.review')});
+  const canvasRef=useRef<AnnotationCanvasHandle>(null);
+  const [draftPoints,setDraftPoints]=useState(0),[interactionBusy,setInteractionBusy]=useState(false),[predictionRefresh,setPredictionRefresh]=useState(0);
+  const busy=annotations.saving||reviewBusy;
+  const canUndo=!readOnly&&!busy&&!interactionBusy&&(draftPoints>0||annotations.canUndo);
+  const undo=()=>{if(!canUndo)return;if(canvasRef.current?.undoDraft())return;if(annotations.undo()){setSelected(undefined);setSelectedPrediction(undefined);setMessage('');}};
+  useEffect(()=>{
+    const down=(event:KeyboardEvent)=>{
+      if(event.defaultPrevented||event.shiftKey||event.altKey||!(event.ctrlKey||event.metaKey)||event.key.toLowerCase()!=='z')return;
+      if(event.target instanceof HTMLElement&&event.target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"])'))return;
+      if(canUndo){event.preventDefault();undo();}
+    };
+    window.addEventListener('keydown',down);return()=>window.removeEventListener('keydown',down);
+  });
   useAnnotationActivity(Number(imageId),!!project?.permissions.includes('activity.record'),review?.idle_seconds);
   useEffect(()=>{window.dispatchEvent(new CustomEvent('annotation-dirty',{detail:annotations.dirty}));return()=>{window.dispatchEvent(new CustomEvent('annotation-dirty',{detail:false}))}},[annotations.dirty]);
   const load = () => {const generation=++loadGeneration.current; return Promise.all([api.get(`/projects/${projectId}`), api.get(`/images/${imageId}`), api.get(`/images/${imageId}/annotations`), api.get(`/projects/${projectId}/classes`), api.get(`/projects/${projectId}/images`),api.get(`/images/${imageId}/review`)]).then(([projectResponse, imageResponse, annotationsResponse, classesResponse, imagesResponse,reviewResponse]) => {
@@ -34,44 +48,42 @@ export default function EditorPage() {
     setReview(typeof reviewResponse.data?.revision==='number'?reviewResponse.data:undefined);
   }).catch((error) => { if(generation!==loadGeneration.current)return;setProject(undefined);setImage(undefined);const detail = error.response?.data?.detail; setLoadError(typeof detail === "string" ? detail : "Unable to load the image editor. Check that the API is running, then retry."); });};
   useEffect(() => { setImage(undefined);setProject(undefined);setReview(undefined);setPredictions([]);setLoadError("");void load();return()=>{loadGeneration.current++;}; }, [imageId, projectId, current?.id]);
-  useEffect(() => { setSelected(undefined); setSelectedPrediction(undefined); setMode("select"); setActionError("");setMessage('');setPanel('objects'); }, [imageId]);
+  useEffect(() => { setSelected(undefined); setSelectedPrediction(undefined); setMode("select"); setActionError("");setMessage('');setPanel('objects');setDraftPoints(0);setInteractionBusy(false); }, [imageId]);
   useEffect(() => { const onKeyDown = (event: KeyboardEvent) => { if (!event.defaultPrevented && !busy && !workflowLocked && project?.permissions.includes("annotation.delete") && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) && (event.key === "Delete" || event.key === "Backspace") && selected && annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_delete)) && mode === "select") { annotations.remove(selected); setSelected(undefined); } }; window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown); }, [selected, annotations, mode, project,busy,workflowLocked]);
   if (loadError) return <main className="editor-error"><section><p className="eyebrow">ANNOTATION EDITOR</p><h1>Unable to open this image</h1><p>{loadError}</p><button onClick={() => navigate(`/projects/${projectId}`)}>← Back to project</button></section></main>;
   if (!image || image.id!==Number(imageId) || !project) return <main className="editor-loading">Loading image editor…</main>;
-  const can=(permission:string)=>project.permissions.includes(permission); const readOnly=!can("annotation.update")||workflowLocked;
   const segmentation = project.annotation_mode === "instance_segmentation"; const index = allImages.findIndex((item) => item.id === image.id);
   const go = (nextIndex: number) => { if(busy)return; if (annotations.dirty && !window.confirm("You have unsaved changes. Discard changes?")) return; const next = allImages[nextIndex]; if (next) navigate(`/projects/${projectId}/images/${next.id}`); };
-  const deleteAll = async () => {
+  const deleteAll = () => {
     if(!can("annotation.delete")||readOnly||busy)return;
-    if (!window.confirm("Delete all labels?\n\nThis removes labels from the dataset. Deletion history is retained.")) return;
-    setReviewBusy(true);
-    try { setActionError(""); const result = await api.delete(`/images/${image.id}/annotations`,{data:{expected_versions:Object.fromEntries(initial.map(a=>[a.id,a.version]))}}); annotations.replace([]); setInitial([]); setSelected(undefined); await load(); setMessage(`Deleted ${result.data.deleted_count} saved labels.`); }
-    catch (error: any) { setActionError(errorMessage(error,"Unable to delete labels")); }finally{setReviewBusy(false);}
+    if (!window.confirm('Remove all labels from this draft? Save draft to apply, or Undo to restore.')) return;
+    if(annotations.clear()){setSelected(undefined);setMessage('All labels removed from the draft. Save draft to apply, or Undo to restore.');}
   };
   const refreshReview=async()=>{try{const result=(await api.get(`/images/${image.id}/review`)).data;if(typeof result?.revision==='number')setReview(result);}catch(error){setActionError(errorMessage(error,'Unable to refresh review status. Reload the image.'));}};
-  const save = async () => { if(readOnly||busy)return;setReviewBusy(true); try { setActionError(""); const saved=await annotations.save(review?.revision);setInitial(saved);setResetViewportKey(value=>value+1);setMessage("Draft saved. It has not been submitted for review.");await refreshReview(); } catch (error: any) { setActionError(errorMessage(error,"Save failed")); }finally{setReviewBusy(false);} };
-  const submit=async(negative:boolean)=>{if(!review||readOnly||busy)return;setActionError('');setMessage('');try{const result=await annotations.submit(review,negative);setInitial(result.annotations);setReview(result.review);setMode('select');setPredictions([]);setResetViewportKey(value=>value+1);setMessage('Revision submitted for review. Editing is locked.');}catch(error){setActionError(errorMessage(error,'Unable to submit. Your draft and viewport have been retained.'));}};
+  const save = async () => { if(readOnly||busy)return;setReviewBusy(true); try { setActionError(""); const saved=await annotations.save(review?.revision);setInitial(saved);canvasRef.current?.clearDraft();setPredictionRefresh(value=>value+1);setResetViewportKey(value=>value+1);setMessage("Draft saved. It has not been submitted for review.");await refreshReview();try{setClasses((await api.get(`/projects/${projectId}/classes`)).data);}catch(error){setActionError(errorMessage(error,'Draft saved, but classes could not be refreshed. Reload the image.'));} } catch (error: any) { setActionError(errorMessage(error,"Save failed")); }finally{setReviewBusy(false);} };
+  const submit=async(negative:boolean)=>{if(!review||readOnly||busy)return;setActionError('');setMessage('');try{const result=await annotations.submit(review,negative);setInitial(result.annotations);canvasRef.current?.clearDraft();setReview(result.review);setMode('select');setPredictions([]);setResetViewportKey(value=>value+1);setMessage('Revision submitted for review. Editing is locked.');}catch(error){setActionError(errorMessage(error,'Unable to submit. Your draft and viewport have been retained.'));}};
   const selectObject=(id:number)=>{if(!annotations.items.some(item=>item.id===id))return;setSelected(id);setSelectedPrediction(undefined);setMode('select');setPanel('objects');window.requestAnimationFrame(()=>document.getElementById('annotation-object-'+id)?.scrollIntoView?.({block:'nearest'}));};
   const reload=()=>{if(busy)return;if(annotations.dirty&&!window.confirm('Reload this image and discard unsaved changes?'))return;void load();};
   return <main className="editor"><header><button disabled={busy} onClick={() => {if(!annotations.dirty||window.confirm('Discard unsaved changes?'))navigate(`/projects/${projectId}`);}}>← Back</button><h2>{image.filename}</h2><ReviewBadge state={review?.state}/>{review&&<button className="secondary" onClick={()=>setPanel('review')}>Review</button>}{!readOnly?<button disabled={busy} onClick={() => void save()}>{annotations.saving ? "Saving…" : "Save draft"}</button>:<span className="badge">{workflowLocked?'Editing locked':'Read only · Viewer'}</span>}</header>
     {message&&<p className="quality-save-status" role="status">{message}</p>}{actionError&&<div role="alert"><p className="error">{actionError}</p><button className="secondary" disabled={busy} onClick={reload}>Reload image</button></div>}
     <div className="workspace"><aside><h3>Classes</h3>{classes.map(item=><button disabled={busy||readOnly} className={classId===item.id?'active':''} onClick={()=>setClassId(item.id)} key={item.id}>● {item.name}</button>)}
-      {can('prediction.run')&&!readOnly&&!busy&&(annotations.dirty?<p className="muted">Save your draft before running or accepting AI suggestions.</p>:<AutoLabelPanel key={image.id} projectId={projectId!} imageId={image.id} classes={classes} annotationMode={project.annotation_mode} selectedId={selectedPrediction} onSelect={id=>{setSelectedPrediction(id);setSelected(undefined);}} onPredictions={setPredictions} onAccepted={()=>void load()}/>)}
+      {can('prediction.run')&&!readOnly&&<AutoLabelPanel key={image.id} projectId={projectId!} imageId={image.id} classes={classes} annotationMode={project.annotation_mode} selectedId={selectedPrediction} onSelect={id=>{setSelectedPrediction(id);setSelected(undefined);}} onPredictions={setPredictions} appliedIds={annotations.items.flatMap(a=>a.prediction_id===undefined?[]:[a.prediction_id])} dirty={annotations.dirty} disabled={busy||interactionBusy} canApply={can('prediction.review')&&can('annotation.create')} refreshKey={predictionRefresh} onApply={items=>{annotations.applyPredictions(items);setSelectedPrediction(undefined);}}/>}
     </aside>
-    <AnnotationCanvas key={image.id} resetViewportKey={resetViewportKey} readOnly={readOnly||busy} src={imageUrl(image.image_url)} imageWidth={image.width} imageHeight={image.height} annotations={annotations.items} predictions={predictions} classes={classes} selected={selected} selectedPrediction={selectedPrediction} classId={classId} mode={mode} onSelect={id=>{setSelected(id);setSelectedPrediction(undefined);}} onSelectPrediction={id=>{setSelectedPrediction(id);setSelected(undefined);}} onAdd={annotation=>{annotations.add(annotation);setMode('select');}} onChange={annotations.update}/>
+    <AnnotationCanvas ref={canvasRef} key={image.id} onEditStart={annotations.beginChange} onEditEnd={annotations.commitChange} onEditCancel={annotations.cancelChange} onDraftChange={setDraftPoints} onInteractionChange={setInteractionBusy} resetViewportKey={resetViewportKey} readOnly={readOnly||busy} src={imageUrl(image.image_url)} imageWidth={image.width} imageHeight={image.height} annotations={annotations.items} predictions={predictions.filter(p=>!annotations.items.some(a=>a.prediction_id===p.id))} classes={classes} selected={selected} selectedPrediction={selectedPrediction} classId={classId} mode={mode} onSelect={id=>{setSelected(id);setSelectedPrediction(undefined);}} onSelectPrediction={id=>{setSelectedPrediction(id);setSelected(undefined);}} onAdd={annotation=>{annotations.add(annotation);setMode('select');}} onChange={annotations.update}/>
     <aside className="quality-sidebar"><div className="quality-sidebar-tabs" aria-label="Annotation details"><button className="secondary" aria-pressed={panel==='objects'} onClick={()=>setPanel('objects')}>Objects</button>{review&&<button className="secondary" aria-pressed={panel==='review'} onClick={()=>setPanel('review')}>Image review</button>}{can('comment.read')&&<button className="secondary" aria-pressed={panel==='comments'} onClick={()=>setPanel('comments')}>Discussions ({review?.open_threads??0})</button>}</div>
       <div hidden={panel!=='objects'} className="quality-object-list"><h3>Objects</h3>{annotations.items.map(annotation=><button id={'annotation-object-'+annotation.id} className={selected===annotation.id?'active':''} onClick={()=>{setSelected(annotation.id);setSelectedPrediction(undefined);}} key={annotation.id}>{annotationLabel(annotation)}</button>)}
-        {annotations.items.find(item=>item.id===selected)&&<><label>Object class<select disabled={readOnly||busy||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_edit))} value={annotations.items.find(a=>a.id===selected)?.class_id} onChange={event=>{const c=classes.find(c=>c.id===Number(event.target.value));if(c&&selected!==undefined)annotations.update(selected,{class_id:c.id,class_name:c.name});}}>{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><AnnotationAttribution annotation={annotations.items.find(item=>item.id===selected)!}/>{!readOnly&&!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_edit))&&<p>Read only object: creator role does not permit correction.</p>}</>}
+        {annotations.items.find(item=>item.id===selected)&&<><label>Object class<select disabled={readOnly||busy||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_edit))} value={annotations.items.find(a=>a.id===selected)?.class_id} onChange={event=>{const c=classes.find(c=>c.id===Number(event.target.value));if(c&&selected!==undefined)annotations.update(selected,{class_id:c.id,class_name:c.name});}}>{annotations.items.find(a=>a.id===selected)?.class_id===0&&<option value={0}>New class: {annotations.items.find(a=>a.id===selected)?.class_name}</option>}{classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><AnnotationAttribution annotation={annotations.items.find(item=>item.id===selected)!}/>{!readOnly&&!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_edit))&&<p>Read only object: creator role does not permit correction.</p>}</>}
       </div>
       {review&&<div hidden={panel!=='review'}><ReviewPanel key={image.id} imageId={image.id} review={review} permissions={project.permissions} busy={busy} dirty={annotations.dirty} empty={annotations.items.length===0} onSubmit={submit} onBusy={setReviewBusy} onChanged={async next=>{setReview(next);setMode('select');await load();}}/></div>}
       {can('comment.read')&&<div hidden={panel!=='comments'}><CommentsPanel key={image.id} imageId={image.id} selected={selected} canComment={can('comment.create')} onSelectObject={selectObject} onChanged={()=>void refreshReview()}/></div>}
     </aside></div>
     <footer className="editor-footer">
       {!readOnly&&<div className="editor-tools">
+        <button disabled={!canUndo} onClick={undo} title="Hoàn tác (Ctrl+Z / Cmd+Z)">Undo</button>
         <button disabled={busy} className={mode==='select'?'active':''} onClick={()=>setMode('select')}>Select</button>
-        {segmentation?<button disabled={busy} className={mode==='polygon'?'active':''} onClick={()=>setMode('polygon')}>Polygon</button>:<button disabled={busy} className={mode==='draw'?'active':''} onClick={()=>setMode('draw')}>Bounding Box</button>}
-        <button disabled={busy||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_delete))} onClick={()=>{if(selected){annotations.remove(selected);setSelected(undefined);}}}>Delete</button>
-        <button className="danger" disabled={busy||initial.some(a=>!a.can_delete)} onClick={()=>void deleteAll()}>Delete All Labels</button>
+        {segmentation?<button disabled={busy||!can('annotation.create')} className={mode==='polygon'?'active':''} onClick={()=>setMode('polygon')}>Polygon</button>:<button disabled={busy||!can('annotation.create')} className={mode==='draw'?'active':''} onClick={()=>setMode('draw')}>Bounding Box</button>}
+        <button disabled={busy||!can('annotation.delete')||!annotations.items.some(a=>a.id===selected&&(a.isNew||a.can_delete))} onClick={()=>{if(selected){annotations.remove(selected);setSelected(undefined);}}}>Delete</button>
+        <button className="danger" disabled={busy||!can('annotation.delete')||!annotations.items.length||annotations.items.some(a=>!a.isNew&&!a.can_delete)} onClick={deleteAll}>Delete All Labels</button>
       </div>}
       <div className="editor-navigation">
         <button disabled={busy||index<=0} onClick={()=>go(index-1)}>‹ Previous</button>

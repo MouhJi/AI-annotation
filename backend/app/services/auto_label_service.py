@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 from pathlib import Path
 from fastapi import HTTPException
@@ -24,7 +25,54 @@ def _points_from_json(value: str | None):
     return points if isinstance(points, list) else None
 
 def prediction_out(item: AutoLabelPrediction) -> dict:
-    return {"id": item.id, "image_id": item.image_id, "model_class_id": item.model_class_id, "model_class_name": item.model_class_name, "mapped_class_id": item.mapped_class_id, "mapped_class_name": item.mapped_class.name if item.mapped_class else None, "prediction_type": item.prediction_type or "bbox", "x": item.x, "y": item.y, "width": item.width, "height": item.height, "points": _points_from_json(item.points_json), "confidence": item.confidence, "status": item.status}
+    return {"draft_token": prediction_token(item), "id": item.id, "image_id": item.image_id, "model_class_id": item.model_class_id, "model_class_name": item.model_class_name, "mapped_class_id": item.mapped_class_id, "mapped_class_name": item.mapped_class.name if item.mapped_class else None, "prediction_type": item.prediction_type or "bbox", "x": item.x, "y": item.y, "width": item.width, "height": item.height, "points": _points_from_json(item.points_json), "confidence": item.confidence, "status": item.status}
+
+def prediction_token(item: AutoLabelPrediction) -> str:
+    """Detect replaced/edited proposals without a new database version column."""
+    data = {key: getattr(item, key) for key in ("id", "image_id", "model_class_id", "model_class_name", "mapped_class_id", "prediction_type", "x", "y", "width", "height", "points_json", "human_edited", "status")}
+    data["created_at"] = aware(item.created_at).isoformat()
+    return hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+
+def proposal_editors(db: Session, prediction: AutoLabelPrediction):
+    identity = aware(prediction.created_at).isoformat()
+    return [row.actor_user_id for row in db.scalars(select(AuditLog).where(
+        AuditLog.workspace_id == prediction.image.project.workspace_id, AuditLog.action == "prediction.edited",
+        AuditLog.resource_type == "prediction", AuditLog.resource_id == str(prediction.id)))
+        if row.details.get("image_id") == prediction.image_id and row.details.get("prediction_created_at") == identity]
+
+def stage_draft_prediction(db: Session, image: Image, payload, actor_id):
+    """Apply an AI draft inside the surrounding Save/Submit transaction; never commit."""
+    prediction = db.scalar(select(AutoLabelPrediction).where(
+        AutoLabelPrediction.id == payload.prediction_id, AutoLabelPrediction.image_id == image.id).with_for_update().execution_options(populate_existing=True))
+    if prediction is None: raise HTTPException(409, "Prediction was replaced. Reload the image before saving.")
+    if prediction.status != "PENDING" or prediction_token(prediction) != payload.prediction_token:
+        raise HTTPException(409, "Prediction changed. Reload the image before saving.")
+    expected_type = "polygon" if image.project.annotation_mode == "instance_segmentation" else "bbox"
+    if payload.annotation_type != expected_type or prediction.prediction_type != expected_type:
+        raise HTTPException(400, "Prediction geometry does not match project mode")
+    if payload.class_id < 0: raise HTTPException(400, "Invalid project class")
+    values = annotation_values(image, payload)
+    edited = payload.class_id != (prediction.mapped_class_id or 0) or any(
+        getattr(prediction, key) != values[key] for key in ("x", "y", "width", "height")) or _points_from_json(prediction.points_json) != _points_from_json(values["points_json"])
+    prediction.mapped_class_id = payload.class_id or None
+    if payload.class_id:
+        label = db.get(LabelClass, payload.class_id)
+        if label is None or label.project_id != image.project_id: raise HTTPException(400, "Class belongs to a different project or no longer exists")
+    label = _resolve_or_create_class(db, prediction)
+    geometry = AnnotationCreate(**{**payload.model_dump(exclude={"id", "prediction_id", "prediction_token"}), "class_id": label.id})
+    validate_payload(db, image, geometry)
+    if edited:
+        prediction.human_edited = True
+        audit(db, image.project.workspace_id, actor_id, "prediction.edited", "prediction", prediction.id,
+              image_id=image.id, prediction_created_at=aware(prediction.created_at).isoformat())
+    values["class_id"] = label.id
+    for key in ("x", "y", "width", "height", "points_json"): setattr(prediction, key, values[key])
+    capture(db, image)
+    annotation = Annotation(image_id=image.id, created_by=actor_id, updated_by=actor_id,
+                            source="ai_edited" if prediction.human_edited else "ai_accepted", **values)
+    db.add(annotation); db.flush()
+    prediction.annotation_id = annotation.id; prediction.status = "ACCEPTED"
+    return proposal_editors(db, prediction)
 
 def _image_path(image: Image) -> Path:
     path = Path(image.filepath).resolve()
@@ -131,12 +179,7 @@ def accept_prediction(db: Session, prediction: AutoLabelPrediction, actor_id) ->
     prediction.annotation_id = annotation.id; prediction.status = "ACCEPTED"
     # Carry actual proposal editors into the accepted image's contributor lineage.
     # Creation identity prevents reused pending-prediction IDs inheriting old edits.
-    identity=aware(prediction.created_at).isoformat()
-    proposal_editors=[row.actor_user_id for row in db.scalars(select(AuditLog).where(
-        AuditLog.workspace_id==image.project.workspace_id,AuditLog.action=="prediction.edited",
-        AuditLog.resource_type=="prediction",AuditLog.resource_id==str(prediction.id)))
-        if row.details.get("image_id")==image.id and row.details.get("prediction_created_at")==identity]
-    content_changed(db,image,actor_id,proposal_editors)
+    content_changed(db,image,actor_id,proposal_editors(db,prediction))
     db.commit(); db.refresh(annotation); return annotation
 
 def reject_prediction(db: Session, prediction: AutoLabelPrediction) -> AutoLabelPrediction:

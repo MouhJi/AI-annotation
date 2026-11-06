@@ -31,6 +31,14 @@ class AnnotatorOut(BaseModel):
 
 class BatchAnnotation(AnnotationBase):
     id: int | None = None
+    prediction_id: int | None = Field(default=None, ge=1)
+    prediction_token: str | None = None
+
+    @model_validator(mode="after")
+    def prediction_is_new(self):
+        if self.prediction_id is not None and self.id is not None:
+            raise ValueError("A prediction can only create a new draft annotation")
+        return self
 
 class AnnotationBatch(BaseModel):
     items: list[BatchAnnotation]

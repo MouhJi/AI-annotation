@@ -48,6 +48,15 @@ multi-tab behavior and unsaved annotation handling.
 
 ### Zoom and pan in the annotation editor
 
+Use **Undo** in the footer or **Ctrl+Z / Cmd+Z** to undo up to 50 changes on the
+current image. Each move/resize is one step; while drawing a polygon, Undo removes
+the last vertex first. Selection, zoom and pan do not enter the history. Text
+fields keep their native undo. Delete All Labels and Accept/Accept All AI now
+change the local draft; **Save draft** (or Submit for review) persists them
+atomically with the other annotations. AI provenance and author metadata remain
+server controlled. A successful save or image change clears history; a failed
+save keeps both the draft and Undo history.
+
 Use **+ / −** or the mouse wheel inside the black workspace to zoom. Wheel zoom
 keeps the image point under the cursor fixed. Hold **Space** and drag with the
 left mouse button to pan; drawing and object editing are suspended during pan.

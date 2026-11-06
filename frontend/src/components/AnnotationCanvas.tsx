@@ -1,12 +1,14 @@
 import ProtectedImage from "./ProtectedImage";
 import {annotationLabel} from "./AnnotationAttribution";
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
 import {moveGeometry} from './annotationGeometry';
 import {centeredViewport, clampImagePoint, fitViewport, resizedViewport, screenToImage, zoomViewport, type Dimensions, type Viewport} from './annotationViewport';
 import type { DraftAnnotation, LabelClass, Point, Prediction } from "../types";
 import "./AnnotationCanvas.css";
 
 type Props = {
+  onEditStart?: () => void; onEditEnd?: () => void; onEditCancel?: () => void;
+  onDraftChange?: (points: number) => void; onInteractionChange?: (active: boolean) => void;
   readOnly?: boolean;
   resetViewportKey?: number;
   src: string; imageWidth: number; imageHeight: number; annotations: DraftAnnotation[]; classes: LabelClass[]; predictions?: Prediction[]; selected?: number; selectedPrediction?: number; classId?: number; mode: "select" | "draw" | "polygon";
@@ -28,7 +30,8 @@ const dedupePolygonPoints = (points: Point[]) => {
 };
 
 /** Keep every persisted geometry in natural image pixels; only this viewport transforms. */
-export default function AnnotationCanvas(props: Props) {
+export type AnnotationCanvasHandle = {undoDraft: () => boolean; clearDraft: () => void};
+const AnnotationCanvas = forwardRef<AnnotationCanvasHandle,Props>(function AnnotationCanvas(props,ref) {
   const workspaceRef = useRef<HTMLDivElement>(null);
   const sourceRef = useRef(props.src);
   sourceRef.current = props.src;
@@ -73,6 +76,7 @@ export default function AnnotationCanvas(props: Props) {
   const cancelInteraction = () => {
     const current = gesture.current;
     if (current && !props.readOnly) props.onChange(current.annotation.id, current.annotation);
+    if (current) props.onEditCancel?.();
     gesture.current = null; box.current = null; pan.current = null;
     setTemporaryBox(null); setPanning(false);setEditing(false);
   };
@@ -129,6 +133,7 @@ export default function AnnotationCanvas(props: Props) {
     if (!editable(a) || event.button!==0 || !imageRef.current) return;
     event.preventDefault();
     gesture.current={annotation:structuredClone(a), start:pointerPoint(event), handle, vertex, pointerId:event.pointerId};
+    props.onEditStart?.();
     setEditing(true);
     workspaceRef.current?.setPointerCapture?.(event.pointerId);
   };
@@ -162,6 +167,12 @@ export default function AnnotationCanvas(props: Props) {
   };
   const scale=view.scale, displayWidth=sizeRef.current.width || (image?.width??0)*scale;
   const busy=panning||editing||!!box.current;
+  useImperativeHandle(ref,()=>({
+    undoDraft:()=>{if(props.readOnly||busy||!draft.length)return false;setDraft(points=>points.slice(0,-1));return true;},
+    clearDraft:()=>setDraft([])
+  }),[props.readOnly,busy,draft]);
+  useEffect(()=>{props.onDraftChange?.(draft.length);},[draft.length,props.onDraftChange]);
+  useEffect(()=>{props.onInteractionChange?.(busy);},[busy,props.onInteractionChange]);
   return <div className="canvas annotation-canvas">
     <div className="viewport-toolbar" role="toolbar" aria-label="Image zoom">
       <button aria-label="Zoom out" disabled={!image||busy} onClick={()=>zoom(1/1.25)}>−</button>
@@ -189,7 +200,7 @@ export default function AnnotationCanvas(props: Props) {
       }}
       onPointerUp={event=>{
         if(pan.current){if(event.pointerId!==pan.current.pointerId)return;pan.current=null;setPanning(false);}
-        else{if(gesture.current&&event.pointerId!==gesture.current.pointerId)return;if(box.current&&event.pointerId!==box.current.pointerId)return;finishBox(event);gesture.current=null;setEditing(false);}
+        else{if(gesture.current&&event.pointerId!==gesture.current.pointerId)return;if(box.current&&event.pointerId!==box.current.pointerId)return;finishBox(event);if(gesture.current)props.onEditEnd?.();gesture.current=null;setEditing(false);}
         if(event.currentTarget.hasPointerCapture?.(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
       }}
       onPointerCancel={cancelInteraction} onLostPointerCapture={()=>{if(pan.current||gesture.current||box.current)cancelInteraction();}}>
@@ -233,4 +244,5 @@ export default function AnnotationCanvas(props: Props) {
     <small>{image?image.width+' × '+image.height+' · ':''}Wheel to zoom · Space + drag to pan{props.mode==='polygon'&&' · click vertices, double-click or Finish to complete'}</small>
     {!props.readOnly&&props.mode==='polygon'&&<span className="canvas-actions"><button onClick={finishPolygon}>Finish polygon</button><button onClick={()=>setDraft([])}>Cancel</button></span>}
   </div>;
-}
+});
+export default AnnotationCanvas;
